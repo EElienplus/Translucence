@@ -8,7 +8,9 @@ I'm running Mac OS, and I don't currently have access to a windows machine, so I
 4. open a code editor. If you want all my setup, use CLion
 5. reload CMakeLists and run :3
 
-I provided a  examples folder where you can look at little showcase files. Enjoy looking through the project! <3
+I provided an examples folder where you can look at little showcase files. Enjoy looking through the project! <3
+
+The app folder contains a blank main.cpp file and a cmakelists file where you can start your journey :)
 
 - Meowsers (EElien)
 
