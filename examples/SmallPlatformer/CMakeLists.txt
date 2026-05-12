@@ -1,0 +1,2 @@
+add_executable(example_SmallPlatformer SmallPlatformer.cpp)
+target_link_libraries(example_SmallPlatformer PRIVATE translucence)

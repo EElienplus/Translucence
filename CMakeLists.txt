@@ -8,3 +8,4 @@ endif()
 
 add_subdirectory(translucence)
 add_subdirectory(app)
+add_subdirectory(examples)

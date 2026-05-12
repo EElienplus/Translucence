@@ -24,6 +24,7 @@ public:
     int getHeight() const;
     int getFontSize();
     bool isRunning();
+    int getFPS() const;
 
     std::string *getTitle();
 

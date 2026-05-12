@@ -32,12 +32,12 @@ public:
     float2 getCenterPos();
     float2 getFeetPos();
 
-    void update(float scale = 1.0f);
+    void update(float scale = 1.0f, float dt = 0.0f);
     void updatePhysics(float dt);
     void assignCollider(float scale = 1.0f);
 
     void applyGravity(float strength, float dt);
-    void resolveCollision(const Collider& other, float scale = 1.0f);
+    void resolveCollision(const Collider& other, float scale = 1.0f, bool horizontalOnly = false);
     void wadMovement(float speed, float jumpStrength, float dt);
     void wadMovement(float speed, float dt) { wadMovement(speed, 300.0f, dt); }
 
@@ -47,6 +47,9 @@ public:
     bool grounded = false;
 
     static const std::vector<Sprite*>& getSprites() { return sprites; }
+
+    void mirrorVertical() const;
+    void mirrorHorizontal() const;
 
 private:
     static std::vector<Sprite*> sprites;

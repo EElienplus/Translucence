@@ -5,6 +5,12 @@
 #include "../include/Sprite.hpp"
 #include <algorithm>
 
+void Sprite::mirrorVertical() const {
+   SDL_FlipSurface(surface, SDL_FLIP_VERTICAL);
+}
+void Sprite::mirrorHorizontal() const {
+    SDL_FlipSurface(surface, SDL_FLIP_HORIZONTAL);
+}
 std::vector<Sprite*> Sprite::sprites;
 
 Sprite::Sprite(Application& application, const std::string& argFilePath) : app(application) {
@@ -62,24 +68,34 @@ float2 Sprite::getFeetPos() {
     y = height;
     return {x, y};
 }
-void Sprite::update(float scale) {
+void Sprite::update(float scale, float dt) {
     this->scale = scale;
     collider.spriteToCollider(*this, scale);
+    updatePhysics(dt);
 }
 
 void Sprite::updatePhysics(float dt) {
     if (!autoUpdatePhysics) return;
 
     if (useGravity) {
-        applyGravity(gravityStrength, dt);
-    } else {
-        pos.x += velocity.x * dt;
-        pos.y += velocity.y * dt;
+        velocity.y += gravityStrength * dt;
     }
 
+    // Horizontal pass: move and resolve
+    pos.x += velocity.x * dt;
+    collider.spriteToCollider(*this, scale);
     for (auto* otherCollider : Collider::getColliders()) {
         if (otherCollider == &collider) continue;
-        resolveCollision(*otherCollider, scale);
+        resolveCollision(*otherCollider, scale, true); // true for horizontal
+    }
+
+    // Vertical pass: move and resolve
+    pos.y += velocity.y * dt;
+    collider.spriteToCollider(*this, scale);
+    grounded = false;
+    for (auto* otherCollider : Collider::getColliders()) {
+        if (otherCollider == &collider) continue;
+        resolveCollision(*otherCollider, scale, false); // false for vertical
     }
 }
 
@@ -92,28 +108,44 @@ void Sprite::applyGravity(float strength, float dt) {
     pos.y += velocity.y * dt;
 }
 
-void Sprite::resolveCollision(const Collider& other, float scale) {
-    update(scale);
+void Sprite::resolveCollision(const Collider& other, float scale, bool horizontalOnly) {
     if (collider.checkCollision(other)) {
         if (other.getType() == ColliderType::Rect) {
             Rect r = other.getRect();
-            // Simple snapping for ground (top of the other rect)
-            if (velocity.y > 0) {
-                pos.y = r.y - height * scale;
-                velocity.y = 0;
-                grounded = true;
-                update(scale);
+            Rect p = collider.getRect();
+
+            if (horizontalOnly) {
+                float overlapLeft   = (p.x + p.w) - r.x;
+                float overlapRight  = (r.x + r.w) - p.x;
+                if (overlapLeft < overlapRight) {
+                    pos.x = r.x - width * scale;
+                } else {
+                    pos.x = r.x + r.w;
+                }
+                velocity.x = 0;
+            } else {
+                float overlapTop    = (p.y + p.h) - r.y;
+                float overlapBottom = (r.y + r.h) - p.y;
+                if (overlapTop < overlapBottom) {
+                    pos.y = r.y - height * scale;
+                    velocity.y = 0;
+                    grounded = true;
+                } else {
+                    pos.y = r.y + r.h;
+                    if (velocity.y < 0) velocity.y = 0;
+                }
             }
+            // Sync collider position after resolution
+            collider.spriteToCollider(*this, scale);
         }
-    } else {
-        grounded = false;
     }
 }
 
 
 void Sprite::wadMovement(float speed, float jumpStrength, float dt) {
-    if (Input::isKeyDown(Input::Key::A)) pos.x -= speed * dt;
-    if (Input::isKeyDown(Input::Key::D)) pos.x += speed * dt;
+    velocity.x = 0;
+    if (Input::isKeyDown(Input::Key::A)) velocity.x = -speed;
+    if (Input::isKeyDown(Input::Key::D)) velocity.x = speed;
     if (Input::isKeyDown(Input::Key::W)) {
         if (grounded) {
             velocity.y = -jumpStrength;

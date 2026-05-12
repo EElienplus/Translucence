@@ -23,6 +23,7 @@ set(LIB_HEADERS
         include/sprite.hpp
         src/collider.cpp
         include/collider.hpp
+        ../examples/BouncingBall/BouncingBall.cpp
 )
 
 add_library(translucence STATIC ${LIB_SOURCES} ${LIB_HEADERS})

@@ -148,6 +148,13 @@ bool Application::isRunning() {
     return running;
 }
 
+int Application::getFPS() const {
+    if (deltaTime > 0) {
+        return static_cast<int>(1.0f / deltaTime);
+    }
+    return 0;
+}
+
 void Application::setRunning(bool argIsRunning) {
     running = argIsRunning;
 }

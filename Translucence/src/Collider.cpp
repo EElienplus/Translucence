@@ -6,6 +6,17 @@
 #include "Sprite.hpp"
 #include <algorithm>
 
+void Collider::makeScreenBorderCollider(Application &app) {
+    static Collider top, bottom, left, right;
+    float w = cast<float>(app.getWidth());
+    float h = cast<float>(app.getHeight());
+    float thickness = 100.0f;
+
+    top.rectToCollider({0, -thickness, w, thickness});
+    bottom.rectToCollider({0, h, w, thickness});
+    left.rectToCollider({-thickness, 0, thickness, h});
+    right.rectToCollider({w, 0, thickness, h});
+}
 std::vector<Collider*> Collider::colliders;
 
 Collider::Collider() {

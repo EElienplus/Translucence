@@ -5,13 +5,15 @@
 
 int main() {
     Application app;
-    app.create(1000, 800, "Translucence UI Pro");
+    app.create(1000, 800, "Translucence Application");
     app.setResizable(true);
     Renderer renderer(app);
     EventSystem events(app);
 
     while (app.isRunning()) {
         events.runEvents();
+        if (Input::isKeyDown(Input::Key::ESCAPE)) app.setRunning(false);
+
         renderer.clearBackground(Color::BgDeep);
 
         renderer.render();

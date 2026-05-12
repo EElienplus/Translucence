@@ -52,6 +52,8 @@ void Renderer::clearBackground(SDL_Color color) {
 void Renderer::render() {
     SDL_RenderPresent(app.getRenderer());
     Input::endFrame();
+    end();
+
 }
 void Renderer::drawRect(Rect rect, SDL_Color color) {
     SDL_FRect fRect = { rect.x, rect.y, rect.w, rect.h };
@@ -445,8 +447,9 @@ void Renderer::drawImage(const RawImage &image, float2 pos, float scale) {
 }
 
 void Renderer::drawSprite(const Sprite &sprite, float scale) {
-        SDL_FRect destRect = { sprite.pos.x, sprite.pos.y, sprite.width * scale, sprite.height * scale};
-        SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &destRect);
+    if (!sprite.getTexture()) return;
+    SDL_FRect destRect = { sprite.pos.x, sprite.pos.y, sprite.width * scale, sprite.height * scale};
+    SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &destRect);
 }
 
 void Renderer::drawList(const std::vector<std::string>& list, float2 pos, SDL_Color color, int textSize) {

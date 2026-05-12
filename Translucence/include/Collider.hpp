@@ -7,6 +7,8 @@
 
 #include <T_Core.hpp>
 
+#include "Application.hpp"
+
 class Sprite;
 
 enum class ColliderType {
@@ -39,8 +41,8 @@ public:
     Circle getCircle() const { return circle; }
 
     static void debug_drawColliders(SDL_Renderer* renderer, SDL_Color color);
-
     static const std::vector<Collider*>& getColliders() { return colliders; }
+    static void makeScreenBorderCollider(Application& app);
 
 private:
     static std::vector<Collider*> colliders;
