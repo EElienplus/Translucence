@@ -1,4 +1,5 @@
-This is a little funtime project project of mine. The code probably isn't the best, since I'm not exactly sure what I'm doing lol :D.
+This is a little funtime project of mine. The code probably isn't the best, since I'm not exactly sure what I'm doing lol :D.
+No just kidding, but I don't really follow the "right" way to do thing, I just do it more the "my way"
 
 I'm running Mac OS, and I don't currently have access to a windows machine, so I can't guarantee how everything will work over there, but if you're on Mac, this is little thing on how to get it set up.
 
