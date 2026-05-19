@@ -9,6 +9,8 @@
 #include <cmath>
 #include <algorithm>
 #include <unordered_map>
+#include <sstream>
+#include <iomanip>
 
 #include "Math.hpp"
 
@@ -876,4 +878,144 @@ InputField& Renderer::drawInputField(InputField& params, LayoutManager& layout, 
 InputField& Renderer::drawInputField(InputField& params, float w, float h) {
     if (activeLayout) params.rect = activeLayout->next(w, h);
     return drawInputField(params);
+}
+void Renderer::drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thickness, float startValue,
+    float endValue, int segments, const std::string& label, int segmentLineHeight, bool drawSegmentLabel, int textSize) {
+    if (segments <= 0) return;
+
+    auto formatAxisValue = [](float value) {
+        if (std::abs(value) < 0.005f) {
+            return std::string("0");
+        }
+
+        std::ostringstream stream;
+        stream << std::fixed << std::setprecision(0) << value;
+
+        std::string text = stream.str();
+
+        if (text.find('.') != std::string::npos) {
+            while (!text.empty() && text.back() == '0') {
+                text.pop_back();
+            }
+
+            if (!text.empty() && text.back() == '.') {
+                text.pop_back();
+            }
+        }
+
+        if (text == "-0" || text.empty()) {
+            text = "0";
+        }
+
+        return text;
+    };
+
+    float axisX = endPos.x - startPos.x;
+    float axisY = endPos.y - startPos.y;
+    float axisLength = std::sqrt(axisX * axisX + axisY * axisY);
+
+    if (axisLength < 0.001f) return;
+
+    drawLine(startPos, endPos, color, thickness);
+
+    float dirX = axisX / axisLength;
+    float dirY = axisY / axisLength;
+
+    float normalX = -dirY;
+    float normalY = dirX;
+
+    float halfTick = static_cast<float>(segmentLineHeight) * 0.5f;
+    float labelPadding = 8.0f;
+    float labelDistance = halfTick + labelPadding;
+
+    int tickThickness = std::max(1, static_cast<int>(static_cast<float>(thickness) / 1.5f));
+
+    float pixelSpacing = axisLength / static_cast<float>(segments);
+    // float minLabelSpacing = static_cast<float>(textSize) * 4.5f;
+    float minLabelSpacing = static_cast<float>(textSize) * 2.25f;
+    int labelStep = std::max(1, static_cast<int>(std::ceil(minLabelSpacing / pixelSpacing)));
+
+    auto drawValueLabel = [&](int i, float value) {
+        float t = static_cast<float>(i) / static_cast<float>(segments);
+
+        float2 tickCenter = {
+            Math::lerp(startPos.x, endPos.x, t),
+            Math::lerp(startPos.y, endPos.y, t)
+        };
+
+        std::string valueText = formatAxisValue(value);
+        float2 textSizeVec = getTextSize(app.getFont(), valueText, textSize);
+
+        float2 labelCenter = {
+            tickCenter.x + normalX * labelDistance,
+            tickCenter.y + normalY * labelDistance
+        };
+
+        float2 textPos = {
+            labelCenter.x - textSizeVec.x * 0.5f,
+            labelCenter.y - textSizeVec.y * 0.5f
+        };
+
+        if (i == 0) {
+            textPos.x = labelCenter.x;
+        } else if (i == segments) {
+            textPos.x = labelCenter.x - textSizeVec.x;
+        }
+
+        drawText(valueText, textPos, color, textSize);
+    };
+
+    for (int i = 0; i <= segments; i++) {
+        float t = static_cast<float>(i) / static_cast<float>(segments);
+
+        float2 tickCenter = {
+            Math::lerp(startPos.x, endPos.x, t),
+            Math::lerp(startPos.y, endPos.y, t)
+        };
+
+        float2 tickStart = {
+            tickCenter.x - normalX * halfTick,
+            tickCenter.y - normalY * halfTick
+        };
+
+        float2 tickEnd = {
+            tickCenter.x + normalX * halfTick,
+            tickCenter.y + normalY * halfTick
+        };
+
+        drawLine(tickStart, tickEnd, color, tickThickness);
+
+        if (drawSegmentLabel && i != 0 && i != segments && i % labelStep == 0) {
+            float currentValue = Math::lerp(startValue, endValue, t);
+            drawValueLabel(i, currentValue);
+        }
+    }
+
+    if (drawSegmentLabel) {
+        drawValueLabel(0, startValue);
+        drawValueLabel(segments, endValue);
+    }
+
+    if (!label.empty()) {
+        float2 axisCenter = {
+            (startPos.x + endPos.x) * 0.5f,
+            (startPos.y + endPos.y) * 0.5f
+        };
+
+        float2 labelSize = getTextSize(app.getFont(), label, textSize);
+
+        float titleDistance = halfTick + labelPadding + static_cast<float>(textSize) * 2.2f;
+
+        float2 labelCenter = {
+            axisCenter.x + normalX * titleDistance,
+            axisCenter.y + normalY * titleDistance
+        };
+
+        float2 labelPos = {
+            labelCenter.x - labelSize.x * 0.5f,
+            labelCenter.y - labelSize.y * 0.5f
+        };
+
+        drawText(label, labelPos, color, textSize);
+    }
 }

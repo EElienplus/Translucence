@@ -2,6 +2,7 @@
 find_package(SDL3 REQUIRED)
 find_package(SDL3_ttf REQUIRED)
 find_package(SDL3_image REQUIRED)
+find_package(SDL3_mixer REQUIRED)
 
 set(LIB_SOURCES
         src/renderer.cpp
@@ -24,6 +25,8 @@ set(LIB_HEADERS
         src/collider.cpp
         include/collider.hpp
         ../examples/BouncingBall/BouncingBall.cpp
+        src/Audio.cpp
+        include/Audio.hpp
 )
 
 add_library(translucence STATIC ${LIB_SOURCES} ${LIB_HEADERS})
@@ -36,4 +39,7 @@ target_link_libraries(translucence PUBLIC
         SDL3::SDL3
         SDL3_ttf::SDL3_ttf
         SDL3_image::SDL3_image
+        SDL3_mixer::SDL3_mixer
 )
+
+target_compile_definitions(translucence PRIVATE TRANSLUCENCE_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/")

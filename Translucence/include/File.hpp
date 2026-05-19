@@ -2,108 +2,125 @@
 #define TRANSLUCENCEWORKSPACE_FILE_HPP
 
 #include <fstream>
-#include <vector>
-#include <filesystem>
-#include <string>
-#include <string_view>
+
 #include "T_Core.hpp"
 
 namespace Translucence {
-
     class File {
     public:
         static constexpr std::string_view EXTENSION = ".tc";
 
-        explicit File(std::filesystem::path p) : m_path(std::move(p)) {
-            if (m_path.extension() != EXTENSION) {
-                m_path.replace_extension(EXTENSION);
+        explicit File(fs::path path)
+            : filePath(std::move(path)),
+              valid(!filePath.empty()) {
+            if (filePath.extension() != EXTENSION) {
+                filePath.replace_extension(EXTENSION);
             }
-            m_valid = !m_path.empty();
         }
 
-
         [[nodiscard]] bool exists() const {
-            return std::filesystem::exists(m_path);
+            return fs::exists(filePath);
         }
 
         [[nodiscard]] bool isValid() const {
-            return m_valid;
+            return valid;
         }
 
         [[nodiscard]] uintmax_t size() const {
-            return exists() ? std::filesystem::file_size(m_path) : 0;
+            return exists() ? fs::file_size(filePath) : 0;
         }
 
-        [[nodiscard]] const std::filesystem::path& path() const {
-            return m_path;
+        [[nodiscard]] const fs::path& path() const {
+            return filePath;
         }
-
-        // --- Lifecycle ---
 
         bool create() const {
-            if (exists()) return false;
-            if (m_path.has_parent_path()) {
-                std::filesystem::create_directories(m_path.parent_path());
+            if (exists()) {
+                return false;
             }
-            std::ofstream file(m_path, std::ios::out | std::ios::binary);
+
+            if (filePath.has_parent_path()) {
+                fs::create_directories(filePath.parent_path());
+            }
+
+            std::ofstream file(filePath, std::ios::out | std::ios::binary);
             return file.good();
         }
 
         bool remove() const {
-            return std::filesystem::remove(m_path);
+            return fs::remove(filePath);
         }
 
-
         [[nodiscard]] std::string read() const {
-            if (!exists()) return "";
-            std::ifstream file(m_path, std::ios::in | std::ios::binary);
+            if (!exists()) {
+                return "";
+            }
+
+            std::ifstream file(filePath, std::ios::in | std::ios::binary);
+            if (!file) {
+                return "";
+            }
+
             const auto fileSize = size();
             std::string buffer(fileSize, '\0');
+
             file.read(buffer.data(), static_cast<std::streamsize>(fileSize));
             return buffer;
         }
 
         bool write(const std::string& content) const {
-            std::ofstream file(m_path, std::ios::out | std::ios::binary | std::ios::trunc);
-            if (!file) return false;
-            file.write(content.data(), content.size());
-            return file.good();
+            return writeToFile(content, std::ios::trunc);
         }
 
         bool append(const std::string& content) const {
-            std::ofstream file(m_path, std::ios::out | std::ios::binary | std::ios::app);
-            if (!file) return false;
-            file.write(content.data(), content.size());
-            return file.good();
+            return writeToFile(content, std::ios::app);
         }
 
-        void addLine() const {
-            append("\n");
+        bool addLine() const {
+            return append("\n");
         }
-
-        // Just some stuff I'm testing. dw about it
 
         [[nodiscard]] std::vector<uint8_t> readBytes() const {
-            if (!exists()) return {};
-            std::ifstream file(m_path, std::ios::in | std::ios::binary);
+            if (!exists()) {
+                return {};
+            }
+
+            std::ifstream file(filePath, std::ios::in | std::ios::binary);
+            if (!file) {
+                return {};
+            }
+
             const auto fileSize = size();
             std::vector<uint8_t> buffer(fileSize);
+
             file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(fileSize));
             return buffer;
         }
 
         bool writeBytes(const std::vector<uint8_t>& data) const {
-            std::ofstream file(m_path, std::ios::out | std::ios::binary | std::ios::trunc);
-            if (!file) return false;
-            file.write(reinterpret_cast<const char*>(data.data()), data.size());
+            std::ofstream file(filePath, std::ios::out | std::ios::binary | std::ios::trunc);
+            if (!file) {
+                return false;
+            }
+
+            file.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
             return file.good();
         }
 
     private:
-        std::filesystem::path m_path;
-        bool m_valid = false;
-    };
+        bool writeToFile(const std::string& content, std::ios::openmode mode) const {
+            std::ofstream file(filePath, std::ios::out | std::ios::binary | mode);
+            if (!file) {
+                return false;
+            }
 
+            file.write(content.data(), static_cast<std::streamsize>(content.size()));
+            return file.good();
+        }
+
+        fs::path filePath;
+        bool valid = false;
+    };
 } // namespace Translucence
 
 #endif // TRANSLUCENCEWORKSPACE_FILE_HPP

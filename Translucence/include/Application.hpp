@@ -8,7 +8,6 @@
 #include "T_Core.hpp"
 
 class Application {
-
 public:
     Application() = default;
 
@@ -16,9 +15,10 @@ public:
 
     void create(int argWidth, int argHeight, std::string argTitle);
 
-    SDL_Renderer* getRenderer() const;
-    SDL_Window* getWindow() const;
-    TTF_TextEngine* getTextEngine() const;
+    SDL_Renderer* getRenderer();
+    SDL_Window* getWindow();
+    TTF_TextEngine* getTextEngine();
+    MIX_Mixer* getMixer();
     TTF_Font* getFont();
     int getWidth() const;
     int getHeight() const;
@@ -26,7 +26,7 @@ public:
     bool isRunning();
     int getFPS() const;
 
-    std::string *getTitle();
+    std::string* getTitle();
 
     void setTitleIcon(std::string filePath);
     void setFontPath(std::string argFontPath);
@@ -44,10 +44,13 @@ public:
 
     void update();
 
+    void triggerError(const std::string& errorMsg);
+
 private:
     SDL_Renderer* renderer = nullptr;
     SDL_Window* window = nullptr;
     TTF_TextEngine* textEngine = nullptr;
+    MIX_Mixer* mixer;
     TTF_Font* font = nullptr;
     std::string fontPath = "default";
     SDL_InitFlags initFlags = SDL_INIT_VIDEO;

@@ -54,6 +54,7 @@ public:
     InputField& drawInputField(InputField& params, class LayoutManager& layout, float w = -1, float h = -1);
     InputField& drawInputField(InputField& params, float w, float h); // uses activeLayout
 
+    void drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thickness, float startValue, float endValue, int segments, const std::string& label = "", int segmentLineHeight = 10, bool drawSegmentLabel = true, int textSize = 15);
     void drawImage(const RawImage& image, float2 pos, float scale);
     void drawSprite(const Sprite& sprite, float scale = 1);
 
