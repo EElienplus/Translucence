@@ -6,7 +6,6 @@
 #include "EventSystem.hpp"
 #include "Sprite.hpp"
 
-
 Application::~Application() {
     if (font) {
         TTF_CloseFont(font);
@@ -30,8 +29,13 @@ Application::~Application() {
 
     running = false;
 
+    MIX_DestroyMixer(mixer);
+
+    MIX_Quit();
+    TTF_Quit();
     SDL_Quit();
 }
+
 void Application::create(int argWidth, int argHeight, std::string argTitle) {
     println("");
     if (!(initFlags & SDL_INIT_VIDEO)) {
@@ -54,7 +58,8 @@ void Application::create(int argWidth, int argHeight, std::string argTitle) {
 
     if (fontPath.empty()) {
         SDL_Log("Could not find a valid default font path!");
-    } else {
+    }
+    else {
         font = TTF_OpenFont(fontPath.c_str(), (float)baseFontSize);
         if (!font) {
             SDL_Log("TTF_OpenFont failed: %s", SDL_GetError());
@@ -66,26 +71,27 @@ void Application::create(int argWidth, int argHeight, std::string argTitle) {
     title = argTitle;
     running = true;
 
-    setTitleIcon("../../Translucence/resources/icon.png");
+    std::string iconPath = TRANSLUCENCE_RESOURCE_DIR "icon.png";
+    setTitleIcon(iconPath);
+
+    SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "5");
+    if (!MIX_Init()) {
+        triggerError("Couldn't initialize SDL_mixer");
+        return;
+    }
+
+    mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    if (!mixer) {
+        triggerError("Couldn't create mixer");
+        return;
+    }
 
     if (window) SDL_ShowWindow(window);
 }
 
 std::string Application::getDefaultFontPath() {
-    std::string path = "";
-    const char* base_path_ptr = SDL_GetBasePath();
-
-    if (base_path_ptr) {
-        std::string base(base_path_ptr);
-        std::string tryPath = base + "../../Translucence/resouces/defaultFont.ttf";
-        if (fs::exists(tryPath)) return tryPath;
-
-        tryPath = base + "../../Translucence/resources/defaultFont.ttf";
-        if (fs::exists(tryPath)) return tryPath;
-
-        tryPath = base + "../../../Translucence/resouces/defaultFont.ttf";
-        if (fs::exists(tryPath)) return tryPath;
-    }
+    std::string path = TRANSLUCENCE_RESOURCE_DIR "defaultFont.ttf";
+    if (fs::exists(path)) return path;
 
 #if defined(__APPLE__)
     path = "/System/Library/Fonts/Helvetica.ttc";
@@ -98,7 +104,10 @@ std::string Application::getDefaultFontPath() {
         "/usr/share/fonts/TTF/DejaVuSans.ttf"
     };
     for (const std::string& p : paths) {
-        if (fs::exists(p)) { path = p; break; }
+        if (fs::exists(p)) {
+            path = p;
+            break;
+        }
     }
 #endif
 
@@ -106,19 +115,23 @@ std::string Application::getDefaultFontPath() {
 }
 
 
-SDL_Renderer * Application::getRenderer() const {
+SDL_Renderer* Application::getRenderer() {
     return renderer;
 }
 
-SDL_Window * Application::getWindow() const {
+SDL_Window* Application::getWindow() {
     return window;
 }
 
-TTF_TextEngine * Application::getTextEngine() const {
+TTF_TextEngine* Application::getTextEngine() {
     return textEngine;
 }
 
-TTF_Font * Application::getFont() {
+MIX_Mixer* Application::getMixer() {
+    return mixer;
+}
+
+TTF_Font* Application::getFont() {
     return font;
 }
 
@@ -175,11 +188,18 @@ void Application::setFontSize(int argFontSize) {
 float Application::getDeltaTime() {
     return deltaTime;
 }
+
 void Application::update() {
     updateDeltaTime();
     for (auto* sprite : Sprite::getSprites()) {
         sprite->updatePhysics(deltaTime);
     }
+}
+
+void Application::triggerError(const std::string& errorMsg) {
+    print("TRANSLUCENCE ERROR: ");
+    println(errorMsg);
+    setRunning(false);
 }
 
 void Application::updateDeltaTime() {
@@ -189,15 +209,17 @@ void Application::updateDeltaTime() {
     lastTime = currentTime;
 
     float newDelta = static_cast<float>(deltaNS) / 1000000000.0f;
-    
+
     // Simple Exponential Moving Average for smoothing
     // 0.8 current, 0.2 previous
     if (deltaTime == 0.0f) {
         deltaTime = newDelta;
-    } else {
+    }
+    else {
         deltaTime = deltaTime * 0.2f + newDelta * 0.8f;
     }
 }
+
 float Application::getTime() {
     SDL_Time ticks;
     if (SDL_GetCurrentTime(&ticks)) {
@@ -207,7 +229,7 @@ float Application::getTime() {
     return 0.0f;
 }
 
-std::string *Application::getTitle() {
+std::string* Application::getTitle() {
     return &title;
 }
 
