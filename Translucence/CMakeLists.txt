@@ -9,6 +9,7 @@ set(LIB_SOURCES
         src/application.cpp
         src/eventSystem.cpp
         src/Input.cpp
+        src/ImageProcess.cpp
 )
 
 set(LIB_HEADERS
@@ -27,6 +28,12 @@ set(LIB_HEADERS
         ../examples/BouncingBall/BouncingBall.cpp
         src/Audio.cpp
         include/Audio.hpp
+        src/MwFile.cpp
+        include/MwFile.hpp
+        include/MwFile.hpp
+        include/Mtf.cpp
+        include/Mtf.hpp
+        src/ImageProcess.cpp
 )
 
 add_library(translucence STATIC ${LIB_SOURCES} ${LIB_HEADERS})

@@ -6,6 +6,7 @@
 #define TRANSLUCENCEWORKSPACE_MATH_HPP
 
 #include "T_Core.hpp"
+#include <Application.hpp>
 #include <random>
 
 namespace Math {

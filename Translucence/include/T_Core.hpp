@@ -209,10 +209,26 @@ struct InputField {
     int roundRadius = 8;
 };
 
+enum class NoiseType { NONE, WHITE, FRACTAL, WORLEY };
+
 struct RawImage {
     int w;
     int h;
     std::vector<SDL_Color> data;
+    NoiseType type = NoiseType::NONE;
+    float scale = 0.0f;
+    int octaves = 0;
+    float persistence = 0.0f;
+
+    [[nodiscard]] bool isValid() const {
+        return w > 0 && h > 0;
+    }
+
+    void setPixel(int x, int y, SDL_Color color) {
+        if (x >= 0 && x < w && y >= 0 && y < h) {
+            data[y * w + x] = color;
+        }
+    }
 };
 
 struct Tail {
@@ -235,5 +251,7 @@ inline float2 getTextSize(TTF_Font* font, const std::string& text, const int fon
 
     return {static_cast<float>(w), static_cast<float>(h)};
 }
+
+struct Texture { SDL_Texture* handle = nullptr; int w = 0; int h = 0; bool isValid() const { return handle != nullptr && w > 0 && h > 0; } };
 
 #endif //TRANSLUCENCEWORKSPACE_CORE_HPP

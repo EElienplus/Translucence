@@ -2,20 +2,18 @@
 #define TRANSLUCENCEWORKSPACE_FILE_HPP
 
 #include <fstream>
+#include <vector>
+#include <filesystem>
 
-#include "T_Core.hpp"
+#ifndef TRANSLUCENCEWORKSPACE_CORE_HPP
+namespace fs = std::filesystem;
+#endif
 
-namespace Translucence {
     class File {
     public:
-        static constexpr std::string_view EXTENSION = ".tc";
-
         explicit File(fs::path path)
             : filePath(std::move(path)),
               valid(!filePath.empty()) {
-            if (filePath.extension() != EXTENSION) {
-                filePath.replace_extension(EXTENSION);
-            }
         }
 
         [[nodiscard]] bool exists() const {
@@ -81,6 +79,10 @@ namespace Translucence {
         }
 
         [[nodiscard]] std::vector<uint8_t> readBytes() const {
+            return readBytesAt(0, static_cast<size_t>(size()));
+        }
+
+        [[nodiscard]] std::vector<uint8_t> readBytesAt(size_t offset, size_t bytesAmount) const {
             if (!exists()) {
                 return {};
             }
@@ -90,37 +92,83 @@ namespace Translucence {
                 return {};
             }
 
+            file.seekg(static_cast<std::streamoff>(offset));
+            
             const auto fileSize = size();
-            std::vector<uint8_t> buffer(fileSize);
+            if (offset >= fileSize) {
+                return {};
+            }
 
-            file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(fileSize));
+            const size_t actualAmount = std::min(bytesAmount, static_cast<size_t>(fileSize - offset));
+            std::vector<uint8_t> buffer(actualAmount);
+
+            file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(actualAmount));
             return buffer;
         }
 
         bool writeBytes(const std::vector<uint8_t>& data) const {
-            std::ofstream file(filePath, std::ios::out | std::ios::binary | std::ios::trunc);
+            return writeToFile(reinterpret_cast<const char*>(data.data()), data.size(), std::ios::trunc);
+        }
+
+        bool writeBytesAt(size_t offset, const std::vector<uint8_t>& data) const {
+            if (data.empty()) {
+                return true;
+            }
+            
+            // If file doesn't exist, we just write the data at the beginning regardless of offset (or should we pad?)
+            // Usually writeBytesAt implies we can write anywhere.
+            // If offset > size, we might want to pad with zeros, but let's follow standard behavior.
+            std::fstream file(filePath, std::ios::in | std::ios::out | std::ios::binary);
+            
             if (!file) {
-                return false;
+                // If file doesn't exist or couldn't be opened in in/out mode, try creating it
+                if (!exists()) {
+                    create();
+                    file.open(filePath, std::ios::in | std::ios::out | std::ios::binary);
+                }
+                
+                if (!file) {
+                    return false;
+                }
             }
 
+            file.seekp(static_cast<std::streamoff>(offset));
             file.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
             return file.good();
         }
 
+        bool clear() const {
+            std::ofstream file(filePath, std::ios::out | std::ios::binary | std::ios::trunc);
+            return file.good();
+        }
+
+        bool rename(const fs::path& newPath) {
+            try {
+                fs::rename(filePath, newPath);
+                filePath = newPath;
+                return true;
+            } catch (...) {
+                return false;
+            }
+        }
+
     private:
         bool writeToFile(const std::string& content, std::ios::openmode mode) const {
+            return writeToFile(content.data(), content.size(), mode);
+        }
+
+        bool writeToFile(const char* data, size_t size, std::ios::openmode mode) const {
             std::ofstream file(filePath, std::ios::out | std::ios::binary | mode);
             if (!file) {
                 return false;
             }
 
-            file.write(content.data(), static_cast<std::streamsize>(content.size()));
+            file.write(data, static_cast<std::streamsize>(size));
             return file.good();
         }
 
         fs::path filePath;
         bool valid = false;
     };
-} // namespace Translucence
 
 #endif // TRANSLUCENCEWORKSPACE_FILE_HPP
