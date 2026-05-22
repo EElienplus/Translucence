@@ -7,6 +7,7 @@
 
 #include <T_Core.hpp>
 #include "Application.hpp"
+#include <SDL3_mixer/SDL_mixer.h>
 
 class Audio {
 public:

@@ -4,6 +4,8 @@
 #include <cstring>
 #include <cmath>
 
+#include "Math.hpp"
+
 Renderer::Renderer(Application& argApplication)
     : app(argApplication), activeLayout(nullptr) {}
 
@@ -24,6 +26,7 @@ void Renderer::clearBackground(SDL_Color color) {
 void Renderer::render() {
     end();
     SDL_RenderPresent(app.getRenderer());
+    app.update();
 }
 
 void Renderer::drawRect(Rect rect, SDL_Color color) {
@@ -310,9 +313,6 @@ void Renderer::drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thi
     }
 }
 
-void Renderer::drawImage(const RawImage& image, float2 pos, float scale) {
-    drawImage(image, Rect{ pos.x, pos.y, static_cast<float>(image.w) * scale, static_cast<float>(image.h) * scale });
-}
 
 void Renderer::drawImage(const RawImage& image, float w, float h) {
     float finalW = (w > 0) ? w : static_cast<float>(image.w);
@@ -325,114 +325,152 @@ void Renderer::drawImage(const RawImage& image, float w, float h) {
 void Renderer::drawImage(const RawImage& image, Rect dst) {
     if (image.w <= 0 || image.h <= 0) return;
 
-    // 1. Signature generation
-    uint64_t sig = (static_cast<uint64_t>(image.w) << 32) | image.h;
-    sig ^= static_cast<uint64_t>(image.scale * 1000.0f);
-    sig ^= static_cast<uint64_t>(image.type) << 24;
-    sig ^= static_cast<uint64_t>(image.octaves) << 16;
-    sig ^= static_cast<uint64_t>(image.persistence * 1000.0f);
-
-    auto it = progressiveTextures.find(sig);
-
-    // 2. Initialization if not exists
-    if (it == progressiveTextures.end()) {
-        SDL_Texture* handle = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA32,
-                                                SDL_TEXTUREACCESS_STREAMING, image.w, image.h);
-        if (!handle) return;
-
-        SDL_SetTextureBlendMode(handle, SDL_BLENDMODE_BLEND);
-        
-        // Pre-fill with transparent black
-        void* pixels = nullptr;
-        int pitch = 0;
-        if (SDL_LockTexture(handle, nullptr, &pixels, &pitch)) {
-            std::memset(pixels, 0, pitch * image.h);
-            SDL_UnlockTexture(handle);
-        }
-
-        progressiveTextures[sig] = { Texture{ handle, image.w, image.h }, 0 };
-        it = progressiveTextures.find(sig);
+    // 1. Create a unique signature
+    uint64_t signature = (static_cast<uint64_t>(image.w) << 32) | image.h;
+    signature ^= static_cast<uint64_t>(image.scale * 1000.0f);
+    // If it's a pre-baked image, use its data pointer address as a part of the signature too
+    if (image.type == NoiseType::NONE) {
+        signature ^= reinterpret_cast<uintptr_t>(image.data.data());
     }
 
-    ProgressiveTexture& pt = it->second;
+    auto it = progressiveTextures.find(signature);
+    if (it == progressiveTextures.end()) {
+        ProgressiveTexture pt;
 
-    // 3. Progressive Update
-    if (pt.currentY < image.h) {
+        // If it's pre-baked data, STATIC access is better. If it's generating, use STREAMING.
+        SDL_TextureAccess access = (image.type == NoiseType::NONE) ? SDL_TEXTUREACCESS_STATIC : SDL_TEXTUREACCESS_STREAMING;
+
+        SDL_Texture* sdlTex = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA32,
+                                                access, image.w, image.h);
+        if (!sdlTex) return;
+
+        pt.texture = Texture{ sdlTex, image.w, image.h };
+
+        SDL_SetTextureBlendMode(pt.texture.handle, SDL_BLENDMODE_BLEND);
+
+        // --- NEW CRITICAL BLOCK FOR PRE-BAKED IMAGES ---
+        if (image.type == NoiseType::NONE) {
+            // If there's actual data in the vector, push it all right now!
+            if (!image.data.empty()) {
+                SDL_UpdateTexture(pt.texture.handle, nullptr, image.data.data(), image.w * sizeof(SDL_Color));
+            }
+            pt.currentY = image.h; // Mark as completely finished instantly
+        } else {
+            // Otherwise, it's a progressive noise blueprint, clear to black and let it generate rows over time
+            pt.currentY = 0;
+            void* pixels = nullptr;
+            int pitch = 0;
+            if (SDL_LockTexture(pt.texture.handle, nullptr, &pixels, &pitch)) {
+                std::memset(pixels, 0, static_cast<size_t>(pitch) * image.h);
+                SDL_UnlockTexture(pt.texture.handle);
+            }
+        }
+        // -----------------------------------------------
+
+        progressiveTextures[signature] = pt;
+        it = progressiveTextures.find(signature);
+    }
+
+    auto& pt = it->second;
+
+    // 2. ONLY run the progressive slice generation if this is an active noise blueprint type
+    if (image.type != NoiseType::NONE && pt.currentY < image.h) {
         int rowsToProcess = std::min(4, image.h - pt.currentY);
-        SDL_Rect lockRect = { 0, pt.currentY, image.w, rowsToProcess };
-        void* pixels = nullptr;
+        void* texPixels = nullptr;
         int pitch = 0;
+        SDL_Rect lockRect = { 0, pt.currentY, image.w, rowsToProcess };
 
-        if (SDL_LockTexture(pt.texture.handle, &lockRect, &pixels, &pitch)) {
-            for (int y = 0; y < rowsToProcess; ++y) {
-                int absY = pt.currentY + y;
-                SDL_Color* currentRow = reinterpret_cast<SDL_Color*>(static_cast<char*>(pixels) + y * pitch);
-                for (int x = 0; x < image.w; ++x) {
-                    SDL_Color color = { 0, 0, 0, 255 };
-
-                    if (image.type == NoiseType::WHITE) {
-                        // Use a deterministic seed for this pixel
-                        unsigned int seed = (absY * image.w + x);
-                        seed = (seed ^ (seed >> 13)) * 1274126177;
-                        Uint8 val = static_cast<Uint8>(seed % 256);
-                        color = { val, val, val, 255 };
-                    } else if (image.type == NoiseType::FRACTAL) {
-                        float amplitude = 1.0f;
+        if (SDL_LockTexture(pt.texture.handle, &lockRect, &texPixels, &pitch)) {
+            for (int localY = 0; localY < rowsToProcess; localY++) {
+                int globalY = pt.currentY + localY;
+                SDL_Color* currentRow = reinterpret_cast<SDL_Color*>(static_cast<char*>(texPixels) + localY * pitch);
+                for (int x = 0; x < image.w; x++) {
+                    if (image.type == NoiseType::FRACTAL) {
+                        float amp = 1.0f;
                         float freq = 1.0f / (image.scale <= 0.1f ? 0.1f : image.scale);
-                        float noiseValue = 0.0f;
-                        float maxValue = 0.0f;
+                        float noiseVal = 0.0f;
+                        float maxVal = 0.0f;
 
-                        for (int i = 0; i < image.octaves; i++) {
-                            noiseValue += ImageProcess::valueNoise2D(static_cast<float>(x) * freq, static_cast<float>(absY) * freq) * amplitude;
-                            maxValue += amplitude;
-                            amplitude *= image.persistence;
+                        for (int o = 0; o < image.octaves; o++) {
+                            noiseVal += ImageProcess::valueNoise2D(cast<float>(x) * freq, cast<float>(globalY) * freq) * amp;
+                            maxVal += amp;
+                            amp *= image.persistence;
                             freq *= 2.0f;
                         }
-                        Uint8 colorVal = static_cast<Uint8>((noiseValue / (maxValue > 0 ? maxValue : 1.0f)) * 255.0f);
-                        color = { colorVal, colorVal, colorVal, 255 };
-                    } else if (image.type == NoiseType::WORLEY) {
-                        float safeScale = std::max(0.1f, image.scale);
-                        int numPoints = static_cast<int>((image.w * image.h) / (safeScale * safeScale));
-                        if (numPoints < 2) numPoints = 2;
-                        
-                        float minDistSq = 1e10f;
-                        for (int i = 0; i < numPoints; i++) {
-                            // Deterministic pseudo-random points
-                            unsigned int seedX = i * 1234567;
-                            seedX = (seedX ^ (seedX >> 13)) * 1274126177;
-                            float px = static_cast<float>(seedX % 1000000) / 1000000.0f * static_cast<float>(image.w);
-
-                            unsigned int seedY = i * 7654321;
-                            seedY = (seedY ^ (seedY >> 13)) * 1274126177;
-                            float py = static_cast<float>(seedY % 1000000) / 1000000.0f * static_cast<float>(image.h);
-
-                            float dx = px - static_cast<float>(x);
-                            float dy = py - static_cast<float>(absY);
-                            float d2 = dx * dx + dy * dy;
-                            if (d2 < minDistSq) minDistSq = d2;
-                        }
-                        float dist = std::sqrt(minDistSq);
-                        float normalized = std::min(dist / safeScale, 1.0f);
-                        Uint8 val = static_cast<Uint8>(normalized * 255.0f);
-                        color = { val, val, val, 255 };
+                        Uint8 c = cast<Uint8>((noiseVal / (maxVal > 0 ? maxVal : 1.0f)) * 255.0f);
+                        currentRow[x] = SDL_Color{ c, c, c, 255 };
                     }
+                    else if (image.type == NoiseType::WHITE) {
+                        Uint8 val = cast<Uint8>(Math::randInt(0, 255));
+                        currentRow[x] = SDL_Color{ val, val, val, 255 };
+                    }
+                    else if (image.type == NoiseType::WORLEY) {
+                        float minDist = 1e10f;
+                        float safeScale = std::max(0.1f, image.scale);
+                        int numPoints = cast<int>((image.w * image.h) / (safeScale * safeScale));
+                        if (numPoints < 2) numPoints = 2;
 
-                    currentRow[x] = color;
+                        for (int i = 0; i < numPoints; i++) {
+                            unsigned int seed = static_cast<unsigned int>(i * 12345);
+                            float px = cast<float>((seed % 9973) % image.w);
+                            float py = cast<float>(((seed * 37) % 9973) % image.h);
+
+                            float dx = px - cast<float>(x);
+                            float dy = py - cast<float>(globalY);
+                            float d = dx*dx + dy*dy;
+                            if (d < minDist) minDist = d;
+                        }
+                        float norm = std::min(std::sqrt(minDist) / safeScale, 1.0f);
+                        Uint8 val = cast<Uint8>(norm * 255.0f);
+                        currentRow[x] = SDL_Color{ val, val, val, 255 };
+                    }
                 }
             }
-
             SDL_UnlockTexture(pt.texture.handle);
             pt.currentY += rowsToProcess;
         }
     }
 
-    // 4. Render State
-    SDL_FRect dstFRect = { dst.x, dst.y, dst.w, dst.h };
-    SDL_RenderTexture(app.getRenderer(), pt.texture.handle, nullptr, &dstFRect);
+    // 3. Hardware presentation blit
+    if (pt.texture.isValid()) {
+        SDL_FRect dstFRect = { dst.x, dst.y, dst.w, dst.h };
+        SDL_RenderTexture(app.getRenderer(), pt.texture.handle, nullptr, &dstFRect);
+    }
+}
+
+void Renderer::drawImage(const RawImage& image, float2 pos, float scale) {
+    drawImage(image, Rect{ pos.x, pos.y, static_cast<float>(image.w) * scale, static_cast<float>(image.h) * scale });
 }
 
 void Renderer::drawSprite(const Sprite& sprite, float scale) {
     if (!sprite.getTexture()) return;
     SDL_FRect dst = { sprite.pos.x, sprite.pos.y, sprite.width * scale, sprite.height * scale };
     SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &dst);
+}
+
+void Renderer::updateImage(const RawImage& image) {
+    if (image.w <= 0 || image.h <= 0 || image.data.empty()) return;
+
+    // Generate the exact same signature key used in drawImage
+    uint64_t signature = (static_cast<uint64_t>(image.w) << 32) | image.h;
+    signature ^= static_cast<uint64_t>(image.scale * 1000.0f);
+    if (image.type == NoiseType::NONE) {
+        signature ^= reinterpret_cast<uintptr_t>(image.data.data());
+    }
+
+    // Find the already-allocated texture and push the updated RAM pixels to it
+    auto it = progressiveTextures.find(signature);
+    if (it != progressiveTextures.end() && it->second.texture.isValid()) {
+        SDL_UpdateTexture(it->second.texture.handle, nullptr, image.data.data(), image.w * sizeof(SDL_Color));
+    }
+}
+
+void Renderer::drawParticles(ParticleEmitter& particleEmitter) {
+    for (const auto& p : particleEmitter.getParticles()) {
+        float t = 1.0f - (p.life / p.maxLife);
+        SDL_Color color = Color::mix(p.startColor, p.endColor, t);
+        float size = p.startSize + (p.endSize - p.startSize) * t;
+
+        drawCircle(Circle{ p.pos, size }, color);
+    }
 }

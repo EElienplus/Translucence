@@ -2,7 +2,7 @@
 // Created by Štěpán Toman on 21.05.2026.
 //
 
-#include "Mtf.hpp"
+#include "../include/Mtf.hpp"
 #include <algorithm>
 
 MTF::MTF(const std::string& filePath) : file(filePath), currentCategory("") {

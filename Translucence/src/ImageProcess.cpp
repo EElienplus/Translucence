@@ -1,6 +1,4 @@
-#include "ImageProcess.hpp"
-#include <cmath>
-#include <algorithm>
+#include <ImageProcess.hpp>
 
 float ImageProcess::valueNoise2D(float x, float y) {
     int ix = cast<int>(std::floor(x));
@@ -26,4 +24,20 @@ float ImageProcess::valueNoise2D(float x, float y) {
     float n11 = hash(ix + 1, iy + 1);
 
     return lerp(lerp(n00, n10, u), lerp(n01, n11, u), v);
+}
+
+void ImageProcess::fillImage(RawImage& image, const SDL_Color color) {
+    if (image.w <= 0 || image.h <= 0) return;
+
+    // 1. Resize securely up front
+    image.data.resize(static_cast<size_t>(image.w) * image.h);
+
+    // 2. Use a range-based loop or a fast std::fill for performance
+    for (auto& pixel : image.data) {
+        pixel = color;
+    }
+}
+ void ImageProcess::smoothenImage(RawImage& image, int radius) {
+
+    return;
 }

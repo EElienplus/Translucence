@@ -110,6 +110,25 @@ namespace Math {
         return false;
     }
 
+    inline float2 subtract(float2 a, float2 b) {
+        return {a.x - b.x, a.y - b.y};
+    }
+
+    inline float2 subtract(float2 a, float b) {
+        return {a.x - b, a.y - b};
+    }
+
+
+    inline float2 add(float2 a, float2 b) {
+        return {a.x + b.x, a.y + b.y};
+    }
+
+    inline float2 add(float2 a, float b) {
+        return {a.x + b, a.y + b};
+    }
+
+
 }
+
 
 #endif //TRANSLUCENCEWORKSPACE_MATH_HPP

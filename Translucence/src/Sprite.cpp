@@ -2,8 +2,11 @@
 // Created by Stěpán Toman on 10.05.2026.
 //
 
-#include "../include/Sprite.hpp"
+#include <Sprite.hpp>
 #include <algorithm>
+
+#include "Input.hpp"
+#include "Math.hpp"
 
 void Sprite::mirrorVertical() const {
    SDL_FlipSurface(surface, SDL_FLIP_VERTICAL);
@@ -154,4 +157,19 @@ void Sprite::wadMovement(float speed, float jumpStrength, float dt) {
     }
 }
 
+void Sprite::updateDragDrop() {
+    float2 mousePos = Input::getMousePos();
 
+    if (Input::isMouseClicked() && !isDragging && Input::isMouseHoveringRect(Input::getMousePos(), {pos.x, pos.y, width, height})) {
+        isDragging = true;
+        mouseOffset = Math::subtract(pos, mousePos);
+    }
+
+    if (!Input::isMouseClicked()) {
+        isDragging = false;
+    }
+
+    if (isDragging) {
+        pos = Math::add(mousePos, mouseOffset);
+    }
+}

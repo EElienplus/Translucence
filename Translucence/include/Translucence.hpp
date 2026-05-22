@@ -4,7 +4,6 @@
 #include <T_Core.hpp>
 #include <Renderer.hpp>
 #include <EventSystem.hpp>
-#include <EventSystem.hpp>
 #include <ImageProcess.hpp>
 #include <File.hpp>
 #include <Sprite.hpp>
@@ -13,5 +12,7 @@
 #include <Audio.hpp>
 #include <MwFile.hpp>
 #include <Mtf.hpp>
+#include <Input.hpp>
+#include <ParticleEmitter.hpp>
 
 #endif // TRANSLUSENCE_LIBRARY_H

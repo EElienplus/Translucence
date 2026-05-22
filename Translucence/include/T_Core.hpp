@@ -9,13 +9,13 @@
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_ttf/SDL_ttf.h>
-#include <SDL3_mixer/SDL_mixer.h>
 #include <string>
 #include <filesystem>
-#include <cmath>
 #include <vector>
 
 namespace fs = std::filesystem;
+#define List std::vector
+#define String std::string
 
 template <typename T, typename T1>
 T cast(T1 value) {
@@ -38,17 +38,33 @@ void println(T value) {
 }
 
 struct float2 {
-    float x, y;
+    float x{}, y{};
+    float2(float x, float y) {
+        this->x = x;
+        this->y = y;
+    }
+
+    float2() : x(0), y(0) {}
 };
 
 struct float3 {
     float x, y, z;
+    float3(float x, float y, float z) {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+    }
 };
 
 struct float4 {
     float x, y, z, w;
+    float4(float x, float y, float z, float w) {
+        this->x = x;
+        this->y = y;
+        this->z = z;
+        this->w = w;
+    }
 };
-
 struct Color {
     // Classic
     static constexpr SDL_Color White = {255, 255, 255, 255};
@@ -143,6 +159,13 @@ struct Rect {
     float y;
     float w;
     float h;
+    Rect(float x, float y, float w, float h) {
+        this->x = x;
+        this->y = y;
+        this->w = w;
+        this->h = h;
+    }
+    Rect() : x(0), y(0), w(0), h(0) {}
 };
 
 struct Circle {
@@ -166,7 +189,7 @@ struct Button {
     bool isClickedOnce = false;
     bool isHovered = false;
 
-    // Sensible modern defaults — leave alone for a clean look, or override per-button.
+    // Sensible modern defaults, leave alone for a clean look, or override per-button.
     SDL_Color bgColor = Color::BgElevated;
     SDL_Color outlineColor = Color::Border;
     SDL_Color textColor = Color::TextPrimary;
@@ -253,5 +276,16 @@ inline float2 getTextSize(TTF_Font* font, const std::string& text, const int fon
 }
 
 struct Texture { SDL_Texture* handle = nullptr; int w = 0; int h = 0; bool isValid() const { return handle != nullptr && w > 0 && h > 0; } };
+
+template <typename T>
+struct vec2 {
+    T v0;
+    T v1;
+    vec2();
+    vec2(T v0, T v1) {
+        this->v0 = v0;
+        this->v1 = v1;
+    }
+};
 
 #endif //TRANSLUCENCEWORKSPACE_CORE_HPP

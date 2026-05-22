@@ -6,11 +6,6 @@
 #define TRANSLUCENCEWORKSPACE_IMAGEPROCESS_HPP
 
 #include "T_Core.hpp"
-#include "Math.hpp"
-#include <vector>
-#include <cmath>
-#include <algorithm>
-
 class ImageProcess {
 public:
     static RawImage booleanNoise(int w, int h) {
@@ -32,6 +27,10 @@ public:
         img.scale = scale;
         return img;
     }
+
+    static void fillImage(RawImage& image, SDL_Color color);
+    static void smoothenImage(RawImage& image, int radius);
+
 };
 
 #endif //TRANSLUCENCEWORKSPACE_IMAGEPROCESS_HPP

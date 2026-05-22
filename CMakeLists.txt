@@ -6,6 +6,6 @@ if(APPLE)
     list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew")
 endif()
 
-add_subdirectory(translucence)
-add_subdirectory(app)
+add_subdirectory(Translucence)
+add_subdirectory(App)
 add_subdirectory(examples)

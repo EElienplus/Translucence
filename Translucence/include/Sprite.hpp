@@ -7,9 +7,7 @@
 
 #include <T_Core.hpp>
 #include <Application.hpp>
-
-#include "Collider.hpp"
-#include "Input.hpp"
+#include <Collider.hpp>
 
 class Sprite {
 
@@ -39,7 +37,8 @@ public:
     void applyGravity(float strength, float dt);
     void resolveCollision(const Collider& other, float scale = 1.0f, bool horizontalOnly = false);
     void wadMovement(float speed, float jumpStrength, float dt);
-    void wadMovement(float speed, float dt) { wadMovement(speed, 300.0f, dt); }
+
+    void updateDragDrop();
 
     Collider& getCollider() { return collider; }
     
@@ -58,6 +57,10 @@ private:
 
     SDL_Surface* surface;
     SDL_Texture* texture;
+
+    float2 mouseOffset = {0.0f, 0.0f};
+    bool isDragging = false;
+
     
 };
 

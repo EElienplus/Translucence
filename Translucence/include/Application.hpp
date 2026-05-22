@@ -6,11 +6,13 @@
 #define TRANSLUCENCEWORKSPACE_APPLICATION_HPP
 
 #include "T_Core.hpp"
+#include <SDL3_mixer/SDL_mixer.h>
+
 
 class Application {
 public:
-    Application() = default;
 
+    Application() = default;
     ~Application();
 
     void create(int argWidth, int argHeight, std::string argTitle);
@@ -25,9 +27,7 @@ public:
     int getFontSize();
     bool isRunning();
     int getFPS() const;
-
     std::string* getTitle();
-
     void setTitleIcon(std::string filePath);
     void setFontPath(std::string argFontPath);
     void setWindowFlags(SDL_WindowFlags argWindowFlags);
@@ -35,15 +35,11 @@ public:
     void setFontSize(int argFontSize);
     void setRunning(bool argIsRunning);
     void setResizable(bool argValue);
-
     std::string getFontPath();
-
     float getDeltaTime();
     void updateDeltaTime();
     float getTime();
-
     void update();
-
     void triggerError(const std::string& errorMsg);
 
 private:

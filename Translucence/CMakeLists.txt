@@ -5,35 +5,34 @@ find_package(SDL3_image REQUIRED)
 find_package(SDL3_mixer REQUIRED)
 
 set(LIB_SOURCES
-        src/renderer.cpp
-        src/application.cpp
-        src/eventSystem.cpp
+        src/Renderer.cpp
+        src/Application.cpp
+        src/EventSystem.cpp
         src/Input.cpp
         src/ImageProcess.cpp
+        src/Sprite.cpp
+        src/Collider.cpp
+        src/Audio.cpp
+        src/MwFile.cpp
+        src/Mtf.cpp
+        src/ParticleEmitter.cpp
 )
 
 set(LIB_HEADERS
         include/T_Core.hpp
         include/Renderer.hpp
         include/Application.hpp
-        include/eventSystem.hpp
+        include/EventSystem.hpp
         include/Input.hpp
         include/Math.hpp
-        include/imageProcess.hpp
+        include/ImageProcess.hpp
         include/File.hpp
-        src/sprite.cpp
-        include/sprite.hpp
-        src/collider.cpp
-        include/collider.hpp
-        ../examples/BouncingBall/BouncingBall.cpp
-        src/Audio.cpp
+        include/Sprite.hpp
+        include/Collider.hpp
         include/Audio.hpp
-        src/MwFile.cpp
         include/MwFile.hpp
-        include/MwFile.hpp
-        include/Mtf.cpp
         include/Mtf.hpp
-        src/ImageProcess.cpp
+        include/ParticleEmitter.hpp
 )
 
 add_library(translucence STATIC ${LIB_SOURCES} ${LIB_HEADERS})

@@ -7,7 +7,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
-#include <algorithm>
+#include "ParticleEmitter.hpp"
 
 class Renderer {
 public:
@@ -58,7 +58,9 @@ public:
     void drawImage(const RawImage& image, float w = -1, float h = -1);
     void drawImage(const RawImage& image, Rect dst);
     void drawSprite(const Sprite& sprite, float scale = 1);
+    void updateImage(const RawImage& image);
 
+    void drawParticles(ParticleEmitter& particleEmitter);
 private:
     struct ProgressiveTexture {
         Texture texture;
