@@ -60,6 +60,8 @@ public:
         RIGHT = SDL_SCANCODE_RIGHT,
         UP = SDL_SCANCODE_UP,
         DOWN = SDL_SCANCODE_DOWN,
+        BACKSPACE = SDL_SCANCODE_BACKSPACE,
+        DELETE = SDL_SCANCODE_DELETE,
     };
 
     enum class MouseButton : uint8_t {
@@ -75,6 +77,8 @@ public:
     static void beginFrame();
     static void processEvent(const SDL_Event &e);
     static void endFrame();
+
+    static void clearTextInput();
 
     static bool isKeyDown(SDL_Scancode key);
     static bool isKeyPressed(SDL_Scancode key);
@@ -118,10 +122,12 @@ public:
 
 private:
     static std::unordered_map<SDL_Scancode, bool> currentKeys;
-    static std::unordered_map<SDL_Scancode, bool> previousKeys;
+    static std::unordered_map<SDL_Scancode, bool> pressedKeys;
+    static std::unordered_map<SDL_Scancode, bool> releasedKeys;
 
     static std::unordered_map<uint8_t, bool> currentButtons;
-    static std::unordered_map<uint8_t, bool> previousButtons;
+    static std::unordered_map<uint8_t, bool> pressedButtons;
+    static std::unordered_map<uint8_t, bool> releasedButtons;
 
     static int mouseX;
     static int mouseY;

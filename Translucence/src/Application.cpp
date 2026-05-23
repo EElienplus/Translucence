@@ -74,7 +74,6 @@ void Application::create(int argWidth, int argHeight, std::string argTitle) {
     std::string iconPath = TRANSLUCENCE_RESOURCE_DIR "icon.png";
     setTitleIcon(iconPath);
 
-    SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "5");
     if (!MIX_Init()) {
         triggerError("Couldn't initialize SDL_mixer");
         return;

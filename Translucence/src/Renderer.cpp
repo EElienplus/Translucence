@@ -1,8 +1,11 @@
 #include "Renderer.hpp"
+#include "Input.hpp"
 #include "LayoutManager.hpp"
 #include "ImageProcess.hpp"
 #include <cstring>
 #include <cmath>
+#include <sstream>
+#include <algorithm>
 
 #include "Math.hpp"
 
@@ -19,12 +22,19 @@ Renderer::~Renderer() {
 }
 
 void Renderer::clearBackground(SDL_Color color) {
+    // Automatically apply screenshake state modifications right before drawing begins
+    applyScreenShake(app.getDeltaTime());
+
     SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
     SDL_RenderClear(app.getRenderer());
 }
 
 void Renderer::render() {
     end();
+
+    // Safety fallback reset before buffer presentation occurs
+    resetScreenShake();
+
     SDL_RenderPresent(app.getRenderer());
     app.update();
 }
@@ -44,12 +54,78 @@ void Renderer::drawRectOutline(Rect rect, SDL_Color color, int thickness) {
 }
 
 void Renderer::drawRoundedRect(Rect rect, SDL_Color color, float radius) {
-    // Immediate fallback to filled rect if radius is zero, otherwise fill primitive
-    drawRect(rect, color);
+    if (radius <= 0) {
+        drawRect(rect, color);
+        return;
+    }
+
+    // Ensure radius doesn't exceed half-dimensions
+    radius = std::min({radius, rect.w / 2.0f, rect.h / 2.0f});
+
+    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+
+    // 4 Corner Circles
+    drawCircle(Circle{{rect.x + radius, rect.y + radius}, radius}, color);
+    drawCircle(Circle{{rect.x + rect.w - radius, rect.y + radius}, radius}, color);
+    drawCircle(Circle{{rect.x + radius, rect.y + rect.h - radius}, radius}, color);
+    drawCircle(Circle{{rect.x + rect.w - radius, rect.y + rect.h - radius}, radius}, color);
+
+    // 4 corner circles are drawn with radius 'r' which fills up to cx+dx, cy+dy.
+    // To ensure perfect coverage without gaps between rectangles and circles,
+    // we use a slightly more robust filling strategy or just use float increments in drawCircle.
+    // The current drawCircle already uses float dy and dx.
+    
+    // 3 Rectangles to fill the middle
+    // Horizontal middle (full width)
+    drawRect(Rect{rect.x, rect.y + radius, rect.w, rect.h - radius * 2.0f}, color);
+    // Top middle (between corners)
+    drawRect(Rect{rect.x + radius, rect.y, rect.w - radius * 2.0f, radius}, color);
+    // Bottom middle (between corners)
+    drawRect(Rect{rect.x + radius, rect.y + rect.h - radius, rect.w - radius * 2.0f, radius}, color);
 }
 
 void Renderer::drawRoundedRectOutline(Rect rect, SDL_Color color, float radius, int thickness) {
-    drawRectOutline(rect, color, thickness);
+    if (radius <= 0) {
+        drawRectOutline(rect, color, thickness);
+        return;
+    }
+
+    radius = std::min({radius, rect.w / 2.0f, rect.h / 2.0f});
+    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+
+    // Draw 4 corner arcs
+    auto drawArc = [&](float2 center, float r, float startAngle, float endAngle) {
+        const int segments = 16;
+        for (int i = 0; i < segments; ++i) {
+            float a1 = startAngle + (endAngle - startAngle) * (float)i / (float)segments;
+            float a2 = startAngle + (endAngle - startAngle) * (float)(i + 1) / (float)segments;
+            for (int t = 0; t < thickness; ++t) {
+                float curR = r + (float)t;
+                SDL_RenderLine(app.getRenderer(),
+                               center.x + std::cos(a1) * curR, center.y + std::sin(a1) * curR,
+                               center.x + std::cos(a2) * curR, center.y + std::sin(a2) * curR);
+            }
+        }
+    };
+
+    float pi = 3.14159265f;
+    drawArc({rect.x + radius, rect.y + radius}, radius, pi, 1.5f * pi); // Top-left
+    drawArc({rect.x + rect.w - radius, rect.y + radius}, radius, 1.5f * pi, 2.0f * pi); // Top-right
+    drawArc({rect.x + rect.w - radius, rect.y + rect.h - radius}, radius, 0, 0.5f * pi); // Bottom-right
+    drawArc({rect.x + radius, rect.y + rect.h - radius}, radius, 0.5f * pi, pi); // Bottom-left
+
+    // Connect with lines
+    for (int t = 0; t < thickness; ++t) {
+        float offset = (float)t;
+        // Top
+        SDL_RenderLine(app.getRenderer(), rect.x + radius, rect.y - offset, rect.x + rect.w - radius, rect.y - offset);
+        // Bottom
+        SDL_RenderLine(app.getRenderer(), rect.x + radius, rect.y + rect.h - 1 + offset, rect.x + rect.w - radius, rect.y + rect.h - 1 + offset);
+        // Left
+        SDL_RenderLine(app.getRenderer(), rect.x - offset, rect.y + radius, rect.x - offset, rect.y + rect.h - radius);
+        // Right
+        SDL_RenderLine(app.getRenderer(), rect.x + rect.w - 1 + offset, rect.y + radius, rect.x + rect.w - 1 + offset, rect.y + rect.h - radius);
+    }
 }
 
 void Renderer::drawCircle(Circle circle, SDL_Color color) {
@@ -58,7 +134,7 @@ void Renderer::drawCircle(Circle circle, SDL_Color color) {
     float cy = circle.pos.y;
     float r = circle.radius;
 
-    for (float dy = -r; dy <= r; dy += 1.0f) {
+    for (float dy = -r; dy <= r; dy += 0.5f) {
         float dx = std::sqrt(r * r - dy * dy);
         SDL_RenderLine(app.getRenderer(), cx - dx, cy + dy, cx + dx, cy + dy);
     }
@@ -97,7 +173,6 @@ void Renderer::drawCircleOutline(Circle circle, SDL_Color color, int thickness) 
 
 void Renderer::drawTriangle(Triangle triangle, SDL_Color color) {
     SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    // Flat drawing approximation via boundary lines
     SDL_RenderLine(app.getRenderer(), triangle.pointA.x, triangle.pointA.y, triangle.pointB.x, triangle.pointB.y);
     SDL_RenderLine(app.getRenderer(), triangle.pointB.x, triangle.pointB.y, triangle.pointC.x, triangle.pointC.y);
     SDL_RenderLine(app.getRenderer(), triangle.pointC.x, triangle.pointC.y, triangle.pointA.x, triangle.pointA.y);
@@ -145,9 +220,20 @@ void Renderer::drawBezier(float2 startPos, float2 endPos, std::vector<float2> co
 }
 
 void Renderer::drawText(std::string text, float2 pos, SDL_Color color, int textSize) {
-    // Utilizing your native textEngine linkage
+    if (text.empty()) return;
     if (!app.getFont() || !app.getTextEngine()) return;
-    // Standard drawing logic hooked inside Application setup
+
+    TTF_Font* font = app.getFont();
+    if (TTF_GetFontSize(font) != static_cast<float>(textSize)) {
+        TTF_SetFontSize(font, static_cast<float>(textSize));
+    }
+
+    TTF_Text* ttfText = TTF_CreateText(app.getTextEngine(), font, text.c_str(), 0);
+    if (ttfText) {
+        TTF_SetTextColor(ttfText, color.r, color.g, color.b, color.a);
+        TTF_DrawRendererText(ttfText, pos.x, pos.y);
+        TTF_DestroyText(ttfText);
+    }
 }
 
 void Renderer::drawList(const std::vector<std::string>& list, float2 pos, SDL_Color color, int textSize) {
@@ -217,19 +303,34 @@ void Renderer::drawGridLines(Rect area, int tilesX, int tilesY, SDL_Color color,
 }
 
 Button& Renderer::drawButton(Button& params) {
-    SDL_Color bgColor = params.bgColor;
-    if (params.isClicked) {
-        bgColor = (params.clickColor.a == 0) ? Color::BgActive : params.clickColor;
-    } else if (params.isHovered) {
-        bgColor = (params.hoverColor.a == 0) ? Color::BgHover : params.hoverColor;
+    // Interactivity
+    float2 mousePos = Input::getMousePos();
+    params.isHovered = Input::isMouseHoveringRect(mousePos, params.rect);
+    params.isClicked = params.isHovered && Input::isMouseButtonDown(static_cast<uint8_t>(Input::MouseButton::LEFT));
+    params.isClickedOnce = params.isHovered && Input::isMouseButtonPressed(static_cast<uint8_t>(Input::MouseButton::LEFT));
+
+    // Animations (Update state)
+    params.update(app.getDeltaTime());
+
+    // Get effective visual properties from component
+    SDL_Color finalBg = params.getEffectiveBgColor();
+    SDL_Color finalOutColor = params.getEffectiveOutlineColor();
+    int outWidth = params.getEffectiveOutlineWidth();
+    Rect drawRect = params.getAnimatedRect();
+
+    if (params.roundRadius > 0) {
+        drawRoundedRect(drawRect, finalBg, (float)params.roundRadius);
+        drawRoundedRectOutline(drawRect, finalOutColor, (float)params.roundRadius, outWidth);
+    } else {
+        this->drawRect(drawRect, finalBg);
+        drawRectOutline(drawRect, finalOutColor, outWidth);
     }
 
-    drawRect(params.rect, bgColor);
-    drawRectOutline(params.rect, params.outlineColor, params.outlineWidth);
-    
     if (!params.text.empty()) {
-        float2 pos = { params.rect.x + 10, params.rect.y + (params.rect.h * 0.5f) - (params.textSize * 0.5f) };
-        drawText(params.text, pos, params.textColor, params.textSize);
+        int fontSize = Math::getSizeWithinButton(app.getFont(), params.text, params.rect);
+        if (fontSize > params.textSize) fontSize = params.textSize;
+        float2 textPos = Math::getPosWithinButton(app.getFont(), params.text, fontSize, drawRect);
+        drawText(params.text, textPos, params.textColor, fontSize);
     }
     return params;
 }
@@ -245,10 +346,10 @@ Button& Renderer::drawButton(Button& params, float w, float h) {
 }
 
 Slider& Renderer::drawSlider(Slider& params) {
-    drawRect(params.rect, params.color);
+    drawRoundedRect(params.rect, params.color, (float)params.roundRadius);
     Rect fillRect = { params.rect.x, params.rect.y, params.rect.w * params.value, params.rect.h };
-    drawRect(fillRect, params.fillColor);
-    
+    drawRoundedRect(fillRect, params.fillColor, (float)params.roundRadius);
+
     float knobX = params.rect.x + (params.rect.w * params.value);
     drawCircle(Circle{ {knobX, params.rect.y + params.rect.h * 0.5f}, static_cast<float>(params.knobSize) * 0.5f }, params.knobColor);
     return params;
@@ -265,10 +366,81 @@ Slider& Renderer::drawSlider(Slider& params, float w, float h) {
 }
 
 InputField& Renderer::drawInputField(InputField& params) {
-    drawRect(params.rect, params.color);
-    drawRectOutline(params.rect, params.borderColor, 1);
-    drawText(params.value.empty() ? params.placeholder : params.value,
-             float2{ params.rect.x + 4, params.rect.y + 4 }, params.textColor, params.textSize);
+    if (Input::isMouseButtonPressed(static_cast<uint8_t>(Input::MouseButton::LEFT))) {
+        bool clickedInside = Input::isMouseHoveringRect(Input::getMousePos(), params.rect);
+        if (clickedInside) {
+            if (!params.enabled) {
+                params.enabled = true;
+                SDL_StartTextInput(app.getWindow());
+            }
+        } else {
+            if (params.enabled) {
+                params.enabled = false;
+                SDL_StopTextInput(app.getWindow());
+            }
+        }
+    }
+
+    if (params.enabled) {
+        const std::string& input = Input::getLastTextInput();
+        if (!input.empty()) {
+            params.value += input;
+            Input::clearTextInput();
+        }
+
+        if (Input::isKeyPressed(Input::Key::BACKSPACE)) {
+            if (!params.value.empty()) {
+                params.value.pop_back();
+            }
+        }
+
+        if (Input::isKeyPressed(Input::Key::DELETE)) {
+            params.value.clear();
+        }
+
+        if (params.multiLine && Input::isKeyPressed(Input::Key::ENTER)) {
+            params.value += "\n";
+        }
+    }
+
+    params.update(app.getDeltaTime());
+
+    drawRoundedRect(params.rect, params.color, (float)params.roundRadius);
+    drawRoundedRectOutline(params.rect, params.getEffectiveBorderColor(), (float)params.roundRadius, 1);
+
+    std::string displayText = params.value;
+    SDL_Color textColor = params.textColor;
+    if (displayText.empty() && !params.enabled) {
+        displayText = params.placeholder;
+        textColor = params.placeholderColor;
+    }
+
+    if (params.enabled) {
+        displayText += "|";
+    }
+
+    if (params.multiLine) {
+        std::vector<std::string> lines;
+        std::string line;
+        std::stringstream ss(displayText);
+        while (std::getline(ss, line, '\n')) {
+            lines.push_back(line);
+        }
+        if (!displayText.empty() && displayText.back() == '\n') {
+            lines.push_back("");
+        }
+        if (displayText.empty()) {
+            lines.push_back("");
+        }
+
+        float currentY = params.rect.y + 4;
+        for (const auto& l : lines) {
+            drawText(l, float2{ params.rect.x + 4, currentY }, textColor, params.textSize);
+            currentY += static_cast<float>(params.textSize) + 4.0f;
+        }
+    } else {
+        drawText(displayText, float2{ params.rect.x + 4, params.rect.y + 4 }, textColor, params.textSize);
+    }
     return params;
 }
 
@@ -313,7 +485,6 @@ void Renderer::drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thi
     }
 }
 
-
 void Renderer::drawImage(const RawImage& image, float w, float h) {
     float finalW = (w > 0) ? w : static_cast<float>(image.w);
     float finalH = (h > 0) ? h : static_cast<float>(image.h);
@@ -325,10 +496,8 @@ void Renderer::drawImage(const RawImage& image, float w, float h) {
 void Renderer::drawImage(const RawImage& image, Rect dst) {
     if (image.w <= 0 || image.h <= 0) return;
 
-    // 1. Create a unique signature
     uint64_t signature = (static_cast<uint64_t>(image.w) << 32) | image.h;
     signature ^= static_cast<uint64_t>(image.scale * 1000.0f);
-    // If it's a pre-baked image, use its data pointer address as a part of the signature too
     if (image.type == NoiseType::NONE) {
         signature ^= reinterpret_cast<uintptr_t>(image.data.data());
     }
@@ -336,27 +505,20 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
     auto it = progressiveTextures.find(signature);
     if (it == progressiveTextures.end()) {
         ProgressiveTexture pt;
-
-        // If it's pre-baked data, STATIC access is better. If it's generating, use STREAMING.
         SDL_TextureAccess access = (image.type == NoiseType::NONE) ? SDL_TEXTUREACCESS_STATIC : SDL_TEXTUREACCESS_STREAMING;
 
-        SDL_Texture* sdlTex = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA32,
-                                                access, image.w, image.h);
+        SDL_Texture* sdlTex = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA32, access, image.w, image.h);
         if (!sdlTex) return;
 
         pt.texture = Texture{ sdlTex, image.w, image.h };
-
         SDL_SetTextureBlendMode(pt.texture.handle, SDL_BLENDMODE_BLEND);
 
-        // --- NEW CRITICAL BLOCK FOR PRE-BAKED IMAGES ---
         if (image.type == NoiseType::NONE) {
-            // If there's actual data in the vector, push it all right now!
             if (!image.data.empty()) {
                 SDL_UpdateTexture(pt.texture.handle, nullptr, image.data.data(), image.w * sizeof(SDL_Color));
             }
-            pt.currentY = image.h; // Mark as completely finished instantly
+            pt.currentY = image.h;
         } else {
-            // Otherwise, it's a progressive noise blueprint, clear to black and let it generate rows over time
             pt.currentY = 0;
             void* pixels = nullptr;
             int pitch = 0;
@@ -365,7 +527,6 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
                 SDL_UnlockTexture(pt.texture.handle);
             }
         }
-        // -----------------------------------------------
 
         progressiveTextures[signature] = pt;
         it = progressiveTextures.find(signature);
@@ -373,7 +534,6 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
 
     auto& pt = it->second;
 
-    // 2. ONLY run the progressive slice generation if this is an active noise blueprint type
     if (image.type != NoiseType::NONE && pt.currentY < image.h) {
         int rowsToProcess = std::min(4, image.h - pt.currentY);
         void* texPixels = nullptr;
@@ -431,7 +591,6 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
         }
     }
 
-    // 3. Hardware presentation blit
     if (pt.texture.isValid()) {
         SDL_FRect dstFRect = { dst.x, dst.y, dst.w, dst.h };
         SDL_RenderTexture(app.getRenderer(), pt.texture.handle, nullptr, &dstFRect);
@@ -448,17 +607,75 @@ void Renderer::drawSprite(const Sprite& sprite, float scale) {
     SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &dst);
 }
 
+void Renderer::drawNineSlice(const NineSlice& ns, Rect dst) {
+    if (!ns.isValid() || !ns.sprite->getTexture()) return;
+
+    SDL_Texture* tex = ns.sprite->getTexture();
+    float sw = ns.sprite->width;
+    float sh = ns.sprite->height;
+
+    // Source coordinates
+    float s_left = (float)ns.left;
+    float s_right = (float)ns.right;
+    float s_top = (float)ns.top;
+    float s_bottom = (float)ns.bottom;
+
+    float s_mid_w = sw - s_left - s_right;
+    float s_mid_h = sh - s_top - s_bottom;
+
+    // Destination coordinates
+    float d_left = s_left;
+    float d_right = s_right;
+    float d_top = s_top;
+    float d_bottom = s_bottom;
+
+    // Adjust destination margins if they exceed target size
+    if (d_left + d_right > dst.w) {
+        float scale = dst.w / (d_left + d_right);
+        d_left *= scale;
+        d_right *= scale;
+    }
+    if (d_top + d_bottom > dst.h) {
+        float scale = dst.h / (d_top + d_bottom);
+        d_top *= scale;
+        d_bottom *= scale;
+    }
+
+    float d_mid_w = dst.w - d_left - d_right;
+    float d_mid_h = dst.h - d_top - d_bottom;
+
+    auto drawPart = [&](float sx, float sy, float sw_p, float sh_p, float dx, float dy, float dw_p, float dh_p) {
+        if (sw_p <= 0 || sh_p <= 0 || dw_p <= 0 || dh_p <= 0) return;
+        SDL_FRect srcRect = { sx, sy, sw_p, sh_p };
+        SDL_FRect dstRect = { dst.x + dx, dst.y + dy, dw_p, dh_p };
+        SDL_RenderTexture(app.getRenderer(), tex, &srcRect, &dstRect);
+    };
+
+    // Corners
+    drawPart(0, 0, s_left, s_top, 0, 0, d_left, d_top); // TL
+    drawPart(sw - s_right, 0, s_right, s_top, dst.w - d_right, 0, d_right, d_top); // TR
+    drawPart(0, sh - s_bottom, s_left, s_bottom, 0, dst.h - d_bottom, d_left, d_bottom); // BL
+    drawPart(sw - s_right, sh - s_bottom, s_right, s_bottom, dst.w - d_right, dst.h - d_bottom, d_right, d_bottom); // BR
+
+    // Edges
+    drawPart(s_left, 0, s_mid_w, s_top, d_left, 0, d_mid_w, d_top); // Top
+    drawPart(s_left, sh - s_bottom, s_mid_w, s_bottom, d_left, dst.h - d_bottom, d_mid_w, d_bottom); // Bottom
+    drawPart(0, s_top, s_left, s_mid_h, 0, d_top, d_left, d_mid_h); // Left
+    drawPart(sw - s_right, s_top, s_right, s_mid_h, dst.w - d_right, d_top, d_right, d_mid_h); // Right
+
+    // Center
+    drawPart(s_left, s_top, s_mid_w, s_mid_h, d_left, d_top, d_mid_w, d_mid_h);
+}
+
 void Renderer::updateImage(const RawImage& image) {
     if (image.w <= 0 || image.h <= 0 || image.data.empty()) return;
 
-    // Generate the exact same signature key used in drawImage
     uint64_t signature = (static_cast<uint64_t>(image.w) << 32) | image.h;
     signature ^= static_cast<uint64_t>(image.scale * 1000.0f);
     if (image.type == NoiseType::NONE) {
         signature ^= reinterpret_cast<uintptr_t>(image.data.data());
     }
 
-    // Find the already-allocated texture and push the updated RAM pixels to it
     auto it = progressiveTextures.find(signature);
     if (it != progressiveTextures.end() && it->second.texture.isValid()) {
         SDL_UpdateTexture(it->second.texture.handle, nullptr, image.data.data(), image.w * sizeof(SDL_Color));
@@ -473,4 +690,35 @@ void Renderer::drawParticles(ParticleEmitter& particleEmitter) {
 
         drawCircle(Circle{ p.pos, size }, color);
     }
+}
+
+void Renderer::screenShake(float durationInSeconds, float intensity, float frequency) {
+    this->shakeTimer = durationInSeconds;
+    this->shakeIntensity = intensity;
+    this->shakeFrequency = frequency;
+    this->shakeTick = 0.0f;
+}
+
+void Renderer::applyScreenShake(float dt) {
+    if (shakeTimer <= 0.0f) {
+        return;
+    }
+
+    shakeTimer -= dt;
+    shakeTick += dt * shakeFrequency;
+
+    float offsetX = std::sin(shakeTick) * shakeIntensity * (std::rand() % 2 == 0 ? 1.0f : -1.0f);
+    float offsetY = std::cos(shakeTick) * shakeIntensity * (std::rand() % 2 == 0 ? 1.0f : -1.0f);
+
+    SDL_Rect baseViewport;
+    if (SDL_GetRenderViewport(app.getRenderer(), &baseViewport)) {
+        baseViewport.x += static_cast<int>(offsetX);
+        baseViewport.y += static_cast<int>(offsetY);
+        SDL_SetRenderViewport(app.getRenderer(), &baseViewport);
+    }
+}
+
+void Renderer::resetScreenShake() {
+    SDL_Rect defaultViewport = { 0, 0, app.getWidth(), app.getHeight() };
+    SDL_SetRenderViewport(app.getRenderer(), &defaultViewport);
 }

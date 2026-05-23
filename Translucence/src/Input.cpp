@@ -6,15 +6,21 @@
 
 // static storage
 std::unordered_map<SDL_Scancode, bool> Input::currentKeys;
-std::unordered_map<SDL_Scancode, bool> Input::previousKeys;
+std::unordered_map<SDL_Scancode, bool> Input::pressedKeys;
+std::unordered_map<SDL_Scancode, bool> Input::releasedKeys;
 std::unordered_map<uint8_t, bool> Input::currentButtons;
-std::unordered_map<uint8_t, bool> Input::previousButtons;
+std::unordered_map<uint8_t, bool> Input::pressedButtons;
+std::unordered_map<uint8_t, bool> Input::releasedButtons;
 std::string Input::lastTextInput;
 int Input::mouseX = 0;
 int Input::mouseY = 0;
 float Input::wheelY = 0.0f;
 
 void Input::beginFrame() {
+    pressedKeys.clear();
+    releasedKeys.clear();
+    pressedButtons.clear();
+    releasedButtons.clear();
     lastTextInput.clear();
     wheelY = 0.0f;
 }
@@ -22,32 +28,34 @@ void Input::beginFrame() {
 void Input::processEvent(const SDL_Event &e) {
     switch (e.type) {
         case SDL_EVENT_KEY_DOWN:
-            if (!e.key.repeat) {
-                currentKeys[e.key.scancode] = true;
-            } else {
-                currentKeys[e.key.scancode] = true;
-            }
+            currentKeys[e.key.scancode] = true;
+            pressedKeys[e.key.scancode] = true;
             break;
 
         case SDL_EVENT_KEY_UP:
             currentKeys[e.key.scancode] = false;
+            releasedKeys[e.key.scancode] = true;
             break;
 
         case SDL_EVENT_TEXT_INPUT:
-            lastTextInput += std::string(e.text.text);
+            if (e.text.text) {
+                lastTextInput += e.text.text;
+            }
             break;
 
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             currentButtons[e.button.button] = true;
+            pressedButtons[e.button.button] = true;
             break;
 
         case SDL_EVENT_MOUSE_BUTTON_UP:
             currentButtons[e.button.button] = false;
+            releasedButtons[e.button.button] = true;
             break;
 
         case SDL_EVENT_MOUSE_MOTION:
-            mouseX = e.motion.x;
-            mouseY = e.motion.y;
+            mouseX = static_cast<int>(e.motion.x);
+            mouseY = static_cast<int>(e.motion.y);
             break;
 
         case SDL_EVENT_MOUSE_WHEEL:
@@ -60,8 +68,10 @@ void Input::processEvent(const SDL_Event &e) {
 }
 
 void Input::endFrame() {
-    previousKeys = currentKeys;
-    previousButtons = currentButtons;
+}
+
+void Input::clearTextInput() {
+    lastTextInput.clear();
 }
 
 bool Input::isKeyDown(SDL_Scancode key) {
@@ -70,23 +80,13 @@ bool Input::isKeyDown(SDL_Scancode key) {
 }
 
 bool Input::isKeyPressed(SDL_Scancode key) {
-    bool cur = false;
-    bool prev = false;
-    auto it = currentKeys.find(key);
-    if (it != currentKeys.end()) cur = it->second;
-    auto it2 = previousKeys.find(key);
-    if (it2 != previousKeys.end()) prev = it2->second;
-    return cur && !prev;
+    auto it = pressedKeys.find(key);
+    return it != pressedKeys.end() && it->second;
 }
 
 bool Input::isKeyReleased(SDL_Scancode key) {
-    bool cur = false;
-    bool prev = false;
-    auto it = currentKeys.find(key);
-    if (it != currentKeys.end()) cur = it->second;
-    auto it2 = previousKeys.find(key);
-    if (it2 != previousKeys.end()) prev = it2->second;
-    return !cur && prev;
+    auto it = releasedKeys.find(key);
+    return it != releasedKeys.end() && it->second;
 }
 
 // Key overloads
@@ -136,23 +136,13 @@ bool Input::isMouseButtonDown(uint8_t button) {
 }
 
 bool Input::isMouseButtonPressed(uint8_t button) {
-    bool cur = false;
-    bool prev = false;
-    auto it = currentButtons.find(button);
-    if (it != currentButtons.end()) cur = it->second;
-    auto it2 = previousButtons.find(button);
-    if (it2 != previousButtons.end()) prev = it2->second;
-    return cur && !prev;
+    auto it = pressedButtons.find(button);
+    return it != pressedButtons.end() && it->second;
 }
 
 bool Input::isMouseButtonReleased(uint8_t button) {
-    bool cur = false;
-    bool prev = false;
-    auto it = currentButtons.find(button);
-    if (it != currentButtons.end()) cur = it->second;
-    auto it2 = previousButtons.find(button);
-    if (it2 != previousButtons.end()) prev = it2->second;
-    return !cur && prev;
+    auto it = releasedButtons.find(button);
+    return it != releasedButtons.end() && it->second;
 }
 
 int Input::getMouseX() { return mouseX; }

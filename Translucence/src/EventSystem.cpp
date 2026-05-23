@@ -25,7 +25,7 @@ void EventSystem::runEvents() {
 			}
 		}
 	}
-
+	Input::endFrame();
 }
 
 void EventSystem::addModule(EventModule module) {

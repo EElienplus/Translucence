@@ -1,0 +1,2 @@
+add_executable(example_ScreenShake ScreenShake.cpp)
+target_link_libraries(example_ScreenShake PRIVATE translucence)

@@ -16,6 +16,7 @@ int main() {
     Button btn3;
     btn3.text = "Blue Button";
     btn3.bgColor = Color::Accent;
+    btn3.roundRadius = 15; // Extra round forbtn3
 
     while (app.isRunning()) {
         events.runEvents();
@@ -34,6 +35,9 @@ int main() {
 
             renderer.drawButton(btn3, 300, 60);
             if (btn3.isClickedOnce) println("Confirm clicked!");
+
+            renderer.space(20);
+            
         }
 
         renderer.render();

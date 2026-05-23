@@ -58,18 +58,32 @@ public:
     void drawImage(const RawImage& image, float w = -1, float h = -1);
     void drawImage(const RawImage& image, Rect dst);
     void drawSprite(const Sprite& sprite, float scale = 1);
+    void drawNineSlice(const NineSlice& ns, Rect dst);
     void updateImage(const RawImage& image);
 
     void drawParticles(ParticleEmitter& particleEmitter);
+
+    // High-level public configuration method
+    void screenShake(float durationInSeconds, float intensity, float frequency);
+
 private:
     struct ProgressiveTexture {
         Texture texture;
         int currentY = 0;
     };
 
+    // Screenshake state machine update methods
+    void applyScreenShake(float dt);
+    void resetScreenShake();
+
     Application& app;
     class LayoutManager* activeLayout;
     std::unordered_map<uint64_t, ProgressiveTexture> progressiveTextures;
+
+    float shakeTimer = 0.0f;
+    float shakeIntensity = 0.0f;
+    float shakeFrequency = 0.0f;
+    float shakeTick = 0.0f;
 };
 
 #endif //TRANSLUCENCEWORKSPACE_RENDERER_HPP

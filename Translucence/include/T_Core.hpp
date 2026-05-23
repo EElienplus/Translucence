@@ -173,10 +173,26 @@ struct Circle {
     float radius;
 };
 
+class Sprite;
+
 struct Triangle {
     float2 pointA;
     float2 pointB;
     float2 pointC;
+};
+
+struct NineSlice {
+    const Sprite* sprite = nullptr;
+    int top = 0;
+    int bottom = 0;
+    int left = 0;
+    int right = 0;
+
+    NineSlice() = default;
+    NineSlice(const Sprite* s, int t, int b, int l, int r)
+        : sprite(s), top(t), bottom(b), left(l), right(r) {}
+    
+    [[nodiscard]] bool isValid() const { return sprite != nullptr; }
 };
 
 struct Shape {
@@ -197,15 +213,63 @@ struct Button {
     std::string text;
     int textSize = 18;
     int roundRadius = 8;
+    
+    // Animation settings
+    float animationSpeed = 10.0f;
+    float clickScale = 0.97f; // Scale factor when pressed (1.0 = no scale)
+    
+    float hoverProgress = 0.0f; // 0 to 1, for animation transitions
+    float clickProgress = 0.0f; // 0 to 1
 
-    // When left as Transparent, the renderer derives hover/click colors automatically
-    // from bgColor + outlineColor (so users only need to set one base color).
+    // State colors (auto-derived if Transparent)
     SDL_Color hoverColor = Color::Transparent;
     SDL_Color clickColor = Color::Transparent;
     SDL_Color hoverOutlineColor = Color::Transparent;
     SDL_Color clickOutlineColor = Color::Transparent;
     int hoverOutlineWidth = -1;
     int clickOutlineWidth = -1;
+
+    void update(float dt) {
+        if (isHovered) {
+            hoverProgress = std::min(1.0f, hoverProgress + dt * animationSpeed);
+        } else {
+            hoverProgress = std::max(0.0f, hoverProgress - dt * animationSpeed);
+        }
+
+        if (isClicked) {
+            clickProgress = std::min(1.0f, clickProgress + dt * animationSpeed * 2.0f);
+        } else {
+            clickProgress = std::max(0.0f, clickProgress - dt * animationSpeed);
+        }
+    }
+
+    [[nodiscard]] SDL_Color getEffectiveBgColor() const {
+        SDL_Color hCol = (hoverColor.a == 0) ? Color::lighten(bgColor, 0.1f) : hoverColor;
+        SDL_Color cCol = (clickColor.a == 0) ? Color::darken(bgColor, 0.2f) : clickColor;
+        SDL_Color mixed = Color::mix(bgColor, hCol, hoverProgress);
+        return Color::mix(mixed, cCol, clickProgress);
+    }
+
+    [[nodiscard]] SDL_Color getEffectiveOutlineColor() const {
+        SDL_Color hOut = (hoverOutlineColor.a == 0) ? outlineColor : hoverOutlineColor;
+        SDL_Color cOut = (clickOutlineColor.a == 0) ? outlineColor : clickOutlineColor;
+        SDL_Color mixed = Color::mix(outlineColor, hOut, hoverProgress);
+        return Color::mix(mixed, cOut, clickProgress);
+    }
+
+    [[nodiscard]] int getEffectiveOutlineWidth() const {
+        if (clickOutlineWidth != -1 && clickProgress > 0.5f) return clickOutlineWidth;
+        if (hoverOutlineWidth != -1 && hoverProgress > 0.5f) return hoverOutlineWidth;
+        return outlineWidth;
+    }
+
+    [[nodiscard]] Rect getAnimatedRect() const {
+        if (clickProgress <= 0.0f || clickScale >= 1.0f) return rect;
+        float currentScale = 1.0f - (clickProgress * (1.0f - clickScale));
+        float dw = rect.w * (1.0f - currentScale);
+        float dh = rect.h * (1.0f - currentScale);
+        return { rect.x + dw / 2.0f, rect.y + dh / 2.0f, rect.w - dw, rect.h - dh };
+    }
 };
 
 // The value will always range 0 - 1. Multiply on consumption to map to your domain.
@@ -216,6 +280,7 @@ struct Slider {
     SDL_Color fillColor = Color::Accent; // Fill (auto-used when set, derived otherwise)
     SDL_Color knobColor = Color::White;
     int knobSize = 18;
+    int roundRadius = 4;
 };
 
 struct InputField {
@@ -230,6 +295,22 @@ struct InputField {
     SDL_Color focusColor = Color::Accent;
     int textSize = 18;
     int roundRadius = 8;
+    float animationSpeed = 10.0f;
+    float focusProgress = 0.0f;
+    bool multiLine = false;
+    bool wrap = false;
+
+    void update(float dt) {
+        if (enabled) {
+            focusProgress = std::min(1.0f, focusProgress + dt * animationSpeed);
+        } else {
+            focusProgress = std::max(0.0f, focusProgress - dt * animationSpeed);
+        }
+    }
+
+    [[nodiscard]] SDL_Color getEffectiveBorderColor() const {
+        return Color::mix(borderColor, focusColor, focusProgress);
+    }
 };
 
 enum class NoiseType { NONE, WHITE, FRACTAL, WORLEY };
