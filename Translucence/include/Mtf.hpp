@@ -1,51 +1,69 @@
-//
-// Created by Štěpán Toman on 21.05.2026.
-//
+#pragma once
 
-#ifndef TRANSLUCENCEWORKSPACE_MTF_HPP
-#define TRANSLUCENCEWORKSPACE_MTF_HPP
-
-#include <File.hpp>
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <string_view>
 
-class MTF {
-public:
-    explicit MTF(const std::string& filePath);
-    ~MTF() = default;
+namespace Translucence {
 
-    void startCategory(const std::string& name);
-    void endCategory();
-    void addEntry(const std::string& keyword, const std::string& value);
+// A lightweight handle to a pooled string
+typedef uint32_t StringId;
+constexpr StringId InvalidStringId = 0xFFFFFFFF;
 
-    bool save();
-    bool load();
-    void clear();
-
-    [[nodiscard]] std::string getValue(const std::string& category, const std::string& keyword) const;
-    [[nodiscard]] const std::unordered_map<std::string, std::unordered_map<std::string, std::string>>& getData() const;
-
+// Handles zero-allocation string storage
+class StringPool {
 private:
-    File file;
+    std::vector<std::string> buffer;
+    std::unordered_map<std::string_view, StringId> lookup;
 
-    struct Entry {
-        std::string key;
-        std::string value;
-    };
-
-    struct CategoryNode {
-        std::string name;
-        std::vector<Entry> entries;
-    };
-
-    std::vector<CategoryNode> orderedData;
-    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> fastLookupMap;
-
-    std::string currentCategory;
-
-    static std::string_view trim(std::string_view str);
+public:
+    StringId intern(std::string_view text);
+    const std::string& resolve(StringId id) const;
 };
 
-#endif //TRANSLUCENCEWORKSPACE_MTF_HPP
+// Represents a parsed block: [CategoryName]
+struct MTFCategory {
+    StringId nameId = InvalidStringId;
+    
+    std::vector<StringId> notes;
+    std::vector<StringId> listEntries; // For 1D lists (- item)
+    std::unordered_map<StringId, StringId> dictEntries; // For 2D dicts (Key -> Val)
+    
+    std::vector<StringId> schema; // For 3D grids (@schema)
+    std::unordered_map<StringId, std::vector<StringId>> gridEntries; // Key -> [Val1, Val2]
+};
+
+class MTFDatabase {
+private:
+    StringPool stringPool;
+    std::unordered_map<StringId, MTFCategory> categories;
+
+    // Parsing helpers
+    std::string_view trim(std::string_view str);
+    std::vector<std::string_view> tokenizeArray(std::string_view content);
+
+public:
+    MTFDatabase() = default;
+
+    // Core Loader
+    bool loadFromFile(const std::string& filepath);
+
+    // Frontend Engine API (Returns actual strings for your UI/Gameplay)
+    // Check if a category exists
+    bool hasCategory(const std::string& categoryName);
+
+    // Get all notes attached to a category
+    std::vector<std::string> getNotes(const std::string& categoryName);
+
+    // Get a 1D List
+    std::vector<std::string> getList(const std::string& categoryName);
+
+    // Get a 2D Dict Value
+    std::string getDictValue(const std::string& categoryName, const std::string& key);
+
+    // Get a 3D Grid Value
+    std::string getGridValue(const std::string& categoryName, const std::string& rowKey, const std::string& schemaKey);
+};
+
+} // namespace Translucence

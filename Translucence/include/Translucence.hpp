@@ -14,5 +14,6 @@
 #include <Mtf.hpp>
 #include <Input.hpp>
 #include <ParticleEmitter.hpp>
+#include <Math.hpp>
 
 #endif // TRANSLUSENCE_LIBRARY_H

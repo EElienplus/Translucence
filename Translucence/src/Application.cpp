@@ -161,10 +161,7 @@ bool Application::isRunning() {
 }
 
 int Application::getFPS() const {
-    if (deltaTime > 0) {
-        return static_cast<int>(1.0f / deltaTime);
-    }
-    return 0;
+    return currentFPS;
 }
 
 void Application::setRunning(bool argIsRunning) {
@@ -215,7 +212,16 @@ void Application::updateDeltaTime() {
         deltaTime = newDelta;
     }
     else {
-        deltaTime = deltaTime * 0.2f + newDelta * 0.8f;
+        // More moderate smoothing to respond faster to frame drops
+        deltaTime = deltaTime * 0.5f + newDelta * 0.5f;
+    }
+
+    // Accurate FPS counter (updates once per second)
+    fpsCount++;
+    if (currentTime - lastFPSUpdateTime >= 1000000000) { // 1 second in ns
+        currentFPS = fpsCount;
+        fpsCount = 0;
+        lastFPSUpdateTime = currentTime;
     }
 }
 

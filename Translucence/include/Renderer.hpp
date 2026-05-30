@@ -28,6 +28,7 @@ public:
     void drawShape(Shape shape, SDL_Color color);
     void drawShapeOutline(Shape shape, SDL_Color color, int thickness);
     void drawLine(float2 startPos, float2 endPos, SDL_Color color, int thickness);
+    void drawLine(Line line, SDL_Color color);
     void drawTail(Tail& tail, float2 point, SDL_Color color, int thickness, bool fadeThickness = true);
     void drawBezier(float2 startPos, float2 endPos, std::vector<float2> controlPoints, SDL_Color color, int thickness);
 
@@ -66,7 +67,12 @@ public:
     // High-level public configuration method
     void screenShake(float durationInSeconds, float intensity, float frequency);
 
+    void applyBloom(float intensity);
+
 private:
+    void ensureBloomTextures();
+    void blurTexture(SDL_Texture* target, SDL_Texture* temp, int iterations);
+    void drawThickLine(float2 start, float2 end, SDL_Color color, float thickness);
     struct ProgressiveTexture {
         Texture texture;
         int currentY = 0;
@@ -84,6 +90,11 @@ private:
     float shakeIntensity = 0.0f;
     float shakeFrequency = 0.0f;
     float shakeTick = 0.0f;
+
+    SDL_Texture* sceneTexture = nullptr;
+    SDL_Texture* bloomTexture1 = nullptr;
+    SDL_Texture* bloomTexture2 = nullptr;
+    int bloomW = 0, bloomH = 0;
 };
 
 #endif //TRANSLUCENCEWORKSPACE_RENDERER_HPP

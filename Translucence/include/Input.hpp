@@ -40,7 +40,6 @@ public:
         X = SDL_SCANCODE_X,
         Y = SDL_SCANCODE_Y,
         Z = SDL_SCANCODE_Z,
-        NUM_0 = SDL_SCANCODE_0,
         NUM_1 = SDL_SCANCODE_1,
         NUM_2 = SDL_SCANCODE_2,
         NUM_3 = SDL_SCANCODE_3,
@@ -50,6 +49,7 @@ public:
         NUM_7 = SDL_SCANCODE_7,
         NUM_8 = SDL_SCANCODE_8,
         NUM_9 = SDL_SCANCODE_9,
+        NUM_0 = SDL_SCANCODE_0,
         ESCAPE = SDL_SCANCODE_ESCAPE,
         ENTER = SDL_SCANCODE_RETURN,
         LSHIFT = SDL_SCANCODE_LSHIFT,
@@ -63,7 +63,6 @@ public:
         BACKSPACE = SDL_SCANCODE_BACKSPACE,
         DELETE = SDL_SCANCODE_DELETE,
     };
-
     enum class MouseButton : uint8_t {
         LEFT = SDL_BUTTON_LEFT,
         MIDDLE = SDL_BUTTON_MIDDLE,
@@ -106,7 +105,6 @@ public:
         SDL_GetMouseState(&x, &y);
         return {x, y};
     }
-
     static float getMouseWheelY();
 
     static bool isMouseHoveringRect(float2 mousePos, Rect rect) {
@@ -114,6 +112,12 @@ public:
                 mousePos.x <= rect.x + rect.w &&
                 mousePos.y >= rect.y &&
                 mousePos.y <= rect.y + rect.h);
+    }
+    static bool isMouseHoveringCircle(float2 mousePos, Circle circle) {
+        const float dx = mousePos.x - circle.pos.x;
+        const float dy = mousePos.y - circle.pos.y;
+
+        return (dx * dx + dy * dy) <= (circle.radius * circle.radius);
     }
 
     static const std::string &getLastTextInput();

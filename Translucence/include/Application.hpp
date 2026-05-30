@@ -56,6 +56,9 @@ private:
     std::string title;
     std::string getDefaultFontPath();
     int baseFontSize = 30;
+    uint64_t lastFPSUpdateTime = 0;
+    int fpsCount = 0;
+    int currentFPS = 0;
     uint64_t lastTime = 0;
     float deltaTime = 0.0f;
     bool running = true;

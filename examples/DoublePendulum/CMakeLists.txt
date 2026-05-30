@@ -1,0 +1,2 @@
+add_executable(example_DoublePendulum DoublePendulum.cpp)
+target_link_libraries(example_DoublePendulum PRIVATE translucence)

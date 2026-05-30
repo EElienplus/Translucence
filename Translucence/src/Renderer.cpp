@@ -19,11 +19,20 @@ Renderer::~Renderer() {
         }
     }
     progressiveTextures.clear();
+
+    if (sceneTexture) SDL_DestroyTexture(sceneTexture);
+    if (bloomTexture1) SDL_DestroyTexture(bloomTexture1);
+    if (bloomTexture2) SDL_DestroyTexture(bloomTexture2);
 }
 
 void Renderer::clearBackground(SDL_Color color) {
     // Automatically apply screenshake state modifications right before drawing begins
     applyScreenShake(app.getDeltaTime());
+
+    ensureBloomTextures();
+    if (sceneTexture) {
+        SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
+    }
 
     SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
     SDL_RenderClear(app.getRenderer());
@@ -31,6 +40,14 @@ void Renderer::clearBackground(SDL_Color color) {
 
 void Renderer::render() {
     end();
+
+    if (sceneTexture) {
+        SDL_SetRenderTarget(app.getRenderer(), nullptr);
+        SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_NONE);
+        SDL_SetTextureAlphaMod(sceneTexture, 255);
+        SDL_SetTextureColorMod(sceneTexture, 255, 255, 255);
+        SDL_RenderTexture(app.getRenderer(), sceneTexture, nullptr, nullptr);
+    }
 
     // Safety fallback reset before buffer presentation occurs
     resetScreenShake();
@@ -46,10 +63,20 @@ void Renderer::drawRect(Rect rect, SDL_Color color) {
 }
 
 void Renderer::drawRectOutline(Rect rect, SDL_Color color, int thickness) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    for (int i = 0; i < thickness; ++i) {
-        SDL_FRect fRect = { rect.x - i, rect.y - i, rect.w + (i * 2), rect.h + (i * 2) };
+    if (thickness <= 1) {
+        SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+        SDL_FRect fRect = { rect.x, rect.y, rect.w, rect.h };
         SDL_RenderRect(app.getRenderer(), &fRect);
+    } else {
+        float2 p1 = { rect.x, rect.y };
+        float2 p2 = { rect.x + rect.w, rect.y };
+        float2 p3 = { rect.x + rect.w, rect.y + rect.h };
+        float2 p4 = { rect.x, rect.y + rect.h };
+
+        drawThickLine(p1, p2, color, (float)thickness);
+        drawThickLine(p2, p3, color, (float)thickness);
+        drawThickLine(p3, p4, color, (float)thickness);
+        drawThickLine(p4, p1, color, (float)thickness);
     }
 }
 
@@ -91,115 +118,146 @@ void Renderer::drawRoundedRectOutline(Rect rect, SDL_Color color, float radius, 
     }
 
     radius = std::min({radius, rect.w / 2.0f, rect.h / 2.0f});
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
 
-    // Draw 4 corner arcs
-    auto drawArc = [&](float2 center, float r, float startAngle, float endAngle) {
+    auto drawArcThick = [&](float2 center, float startAngle, float endAngle) {
         const int segments = 16;
-        for (int i = 0; i < segments; ++i) {
-            float a1 = startAngle + (endAngle - startAngle) * (float)i / (float)segments;
-            float a2 = startAngle + (endAngle - startAngle) * (float)(i + 1) / (float)segments;
-            for (int t = 0; t < thickness; ++t) {
-                float curR = r + (float)t;
-                SDL_RenderLine(app.getRenderer(),
-                               center.x + std::cos(a1) * curR, center.y + std::sin(a1) * curR,
-                               center.x + std::cos(a2) * curR, center.y + std::sin(a2) * curR);
-            }
+        float2 lastPos = {
+            center.x + std::cos(startAngle) * radius,
+            center.y + std::sin(startAngle) * radius
+        };
+        for (int i = 1; i <= segments; ++i) {
+            float t = (float)i / (float)segments;
+            float angle = startAngle + t * (endAngle - startAngle);
+            float2 currentPos = {
+                center.x + std::cos(angle) * radius,
+                center.y + std::sin(angle) * radius
+            };
+            drawLine(lastPos, currentPos, color, thickness);
+            lastPos = currentPos;
         }
     };
 
     float pi = 3.14159265f;
-    drawArc({rect.x + radius, rect.y + radius}, radius, pi, 1.5f * pi); // Top-left
-    drawArc({rect.x + rect.w - radius, rect.y + radius}, radius, 1.5f * pi, 2.0f * pi); // Top-right
-    drawArc({rect.x + rect.w - radius, rect.y + rect.h - radius}, radius, 0, 0.5f * pi); // Bottom-right
-    drawArc({rect.x + radius, rect.y + rect.h - radius}, radius, 0.5f * pi, pi); // Bottom-left
+    drawArcThick({rect.x + radius, rect.y + radius}, pi, 1.5f * pi); // Top-left
+    drawArcThick({rect.x + rect.w - radius, rect.y + radius}, 1.5f * pi, 2.0f * pi); // Top-right
+    drawArcThick({rect.x + rect.w - radius, rect.y + rect.h - radius}, 0, 0.5f * pi); // Bottom-right
+    drawArcThick({rect.x + radius, rect.y + rect.h - radius}, 0.5f * pi, pi); // Bottom-left
 
     // Connect with lines
-    for (int t = 0; t < thickness; ++t) {
-        float offset = (float)t;
-        // Top
-        SDL_RenderLine(app.getRenderer(), rect.x + radius, rect.y - offset, rect.x + rect.w - radius, rect.y - offset);
-        // Bottom
-        SDL_RenderLine(app.getRenderer(), rect.x + radius, rect.y + rect.h - 1 + offset, rect.x + rect.w - radius, rect.y + rect.h - 1 + offset);
-        // Left
-        SDL_RenderLine(app.getRenderer(), rect.x - offset, rect.y + radius, rect.x - offset, rect.y + rect.h - radius);
-        // Right
-        SDL_RenderLine(app.getRenderer(), rect.x + rect.w - 1 + offset, rect.y + radius, rect.x + rect.w - 1 + offset, rect.y + rect.h - radius);
-    }
+    // Top
+    drawLine({rect.x + radius, rect.y}, {rect.x + rect.w - radius, rect.y}, color, thickness);
+    // Bottom
+    drawLine({rect.x + radius, rect.y + rect.h}, {rect.x + rect.w - radius, rect.y + rect.h}, color, thickness);
+    // Left
+    drawLine({rect.x, rect.y + radius}, {rect.x, rect.y + rect.h - radius}, color, thickness);
+    // Right
+    drawLine({rect.x + rect.w, rect.y + radius}, {rect.x + rect.w, rect.y + rect.h - radius}, color, thickness);
 }
 
 void Renderer::drawCircle(Circle circle, SDL_Color color) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    float cx = circle.pos.x;
-    float cy = circle.pos.y;
-    float r = circle.radius;
+    const int segments = 64;
+    std::vector<SDL_Vertex> vertices;
+    SDL_FColor fcolor = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f };
 
-    for (float dy = -r; dy <= r; dy += 0.5f) {
-        float dx = std::sqrt(r * r - dy * dy);
-        SDL_RenderLine(app.getRenderer(), cx - dx, cy + dy, cx + dx, cy + dy);
+    vertices.push_back({ { circle.pos.x, circle.pos.y }, fcolor, { 0, 0 } });
+    for (int i = 0; i <= segments; ++i) {
+        float angle = (float)i * 2.0f * 3.14159265f / (float)segments;
+        float x = circle.pos.x + std::cos(angle) * circle.radius;
+        float y = circle.pos.y + std::sin(angle) * circle.radius;
+        vertices.push_back({ { x, y }, fcolor, { 0, 0 } });
     }
+
+    std::vector<int> indices;
+    for (int i = 1; i <= segments; ++i) {
+        indices.push_back(0);
+        indices.push_back(i);
+        indices.push_back(i + 1);
+    }
+
+    SDL_RenderGeometry(app.getRenderer(), nullptr, vertices.data(), (int)vertices.size(), indices.data(), (int)indices.size());
 }
 
 void Renderer::drawCircleOutline(Circle circle, SDL_Color color, int thickness) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    float cx = circle.pos.x;
-    float cy = circle.pos.y;
+    const int segments = 64;
+    float2 lastPos = { circle.pos.x + circle.radius, circle.pos.y };
 
-    for (int t = 0; t < thickness; ++t) {
-        float r = circle.radius + t;
-        float x = r;
-        float y = 0;
-        float p = 1.0f - r;
-
-        while (x >= y) {
-            SDL_RenderPoint(app.getRenderer(), cx + x, cy + y);
-            SDL_RenderPoint(app.getRenderer(), cx - x, cy + y);
-            SDL_RenderPoint(app.getRenderer(), cx + x, cy - y);
-            SDL_RenderPoint(app.getRenderer(), cx - x, cy - y);
-            SDL_RenderPoint(app.getRenderer(), cx + y, cy + x);
-            SDL_RenderPoint(app.getRenderer(), cx - y, cy + x);
-            SDL_RenderPoint(app.getRenderer(), cx + y, cy - x);
-            SDL_RenderPoint(app.getRenderer(), cx - y, cy - x);
-            y += 1.0f;
-            if (p < 0) {
-                p += 2.0f * y + 1.0f;
-            } else {
-                x -= 1.0f;
-                p += 2.0f * (y - x) + 1.0f;
-            }
-        }
+    for (int i = 1; i <= segments; ++i) {
+        float angle = (float)i * 2.0f * 3.14159265f / (float)segments;
+        float2 currentPos = {
+            circle.pos.x + std::cos(angle) * circle.radius,
+            circle.pos.y + std::sin(angle) * circle.radius
+        };
+        drawLine(lastPos, currentPos, color, thickness);
+        lastPos = currentPos;
     }
 }
 
 void Renderer::drawTriangle(Triangle triangle, SDL_Color color) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    SDL_RenderLine(app.getRenderer(), triangle.pointA.x, triangle.pointA.y, triangle.pointB.x, triangle.pointB.y);
-    SDL_RenderLine(app.getRenderer(), triangle.pointB.x, triangle.pointB.y, triangle.pointC.x, triangle.pointC.y);
-    SDL_RenderLine(app.getRenderer(), triangle.pointC.x, triangle.pointC.y, triangle.pointA.x, triangle.pointA.y);
+    SDL_Vertex vertices[3];
+    SDL_FColor fcolor = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f };
+
+    vertices[0] = { { triangle.pointA.x, triangle.pointA.y }, fcolor, { 0, 0 } };
+    vertices[1] = { { triangle.pointB.x, triangle.pointB.y }, fcolor, { 0, 0 } };
+    vertices[2] = { { triangle.pointC.x, triangle.pointC.y }, fcolor, { 0, 0 } };
+
+    SDL_RenderGeometry(app.getRenderer(), nullptr, vertices, 3, nullptr, 0);
 }
 
 void Renderer::drawTriangleOutline(Triangle triangle, SDL_Color color, int thickness) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    SDL_RenderLine(app.getRenderer(), triangle.pointA.x, triangle.pointA.y, triangle.pointB.x, triangle.pointB.y);
-    SDL_RenderLine(app.getRenderer(), triangle.pointB.x, triangle.pointB.y, triangle.pointC.x, triangle.pointC.y);
-    SDL_RenderLine(app.getRenderer(), triangle.pointC.x, triangle.pointC.y, triangle.pointA.x, triangle.pointA.y);
-}
-
-void Renderer::drawShape(Shape shape, SDL_Color color) {
-    if (shape.points.size() < 2) return;
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    for (size_t i = 0; i < shape.points.size() - 1; ++i) {
-        SDL_RenderLine(app.getRenderer(), shape.points[i].x, shape.points[i].y, shape.points[i+1].x, shape.points[i+1].y);
+    if (thickness <= 1) {
+        SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+        SDL_RenderLine(app.getRenderer(), triangle.pointA.x, triangle.pointA.y, triangle.pointB.x, triangle.pointB.y);
+        SDL_RenderLine(app.getRenderer(), triangle.pointB.x, triangle.pointB.y, triangle.pointC.x, triangle.pointC.y);
+        SDL_RenderLine(app.getRenderer(), triangle.pointC.x, triangle.pointC.y, triangle.pointA.x, triangle.pointA.y);
+    } else {
+        drawThickLine(triangle.pointA, triangle.pointB, color, (float)thickness);
+        drawThickLine(triangle.pointB, triangle.pointC, color, (float)thickness);
+        drawThickLine(triangle.pointC, triangle.pointA, color, (float)thickness);
     }
 }
 
+void Renderer::drawShape(Shape shape, SDL_Color color) {
+    if (shape.points.size() < 3) return;
+    
+    std::vector<SDL_Vertex> vertices;
+    SDL_FColor fcolor = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f };
+    
+    // Very simple fan triangulation (only works for convex shapes)
+    for (size_t i = 0; i < shape.points.size(); ++i) {
+        vertices.push_back({ { shape.points[i].x, shape.points[i].y }, fcolor, { 0, 0 } });
+    }
+    
+    std::vector<int> indices;
+    for (size_t i = 1; i < shape.points.size() - 1; ++i) {
+        indices.push_back(0);
+        indices.push_back(static_cast<int>(i));
+        indices.push_back(static_cast<int>(i + 1));
+    }
+    
+    SDL_RenderGeometry(app.getRenderer(), nullptr, vertices.data(), (int)vertices.size(), indices.data(), (int)indices.size());
+}
+
 void Renderer::drawShapeOutline(Shape shape, SDL_Color color, int thickness) {
-    drawShape(shape, color);
+    if (shape.points.size() < 2) return;
+    if (thickness <= 1) {
+        drawShape(shape, color);
+    } else {
+        for (size_t i = 0; i < shape.points.size() - 1; ++i) {
+            drawThickLine(shape.points[i], shape.points[i+1], color, (float)thickness);
+        }
+    }
 }
 
 void Renderer::drawLine(float2 startPos, float2 endPos, SDL_Color color, int thickness) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    SDL_RenderLine(app.getRenderer(), startPos.x, startPos.y, endPos.x, endPos.y);
+    if (thickness <= 1) {
+        SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+        SDL_RenderLine(app.getRenderer(), startPos.x, startPos.y, endPos.x, endPos.y);
+    } else {
+        drawThickLine(startPos, endPos, color, (float)thickness);
+    }
+}
+void Renderer::drawLine(Line line, SDL_Color color) {
+    drawLine(line.startPos, line.endPos, color, line.thickness);
 }
 
 void Renderer::drawTail(Tail& tail, float2 point, SDL_Color color, int thickness, bool fadeThickness) {
@@ -208,15 +266,78 @@ void Renderer::drawTail(Tail& tail, float2 point, SDL_Color color, int thickness
         tail.points.erase(tail.points.begin());
     }
     if (tail.points.size() < 2) return;
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+
     for (size_t i = 0; i < tail.points.size() - 1; ++i) {
-        SDL_RenderLine(app.getRenderer(), tail.points[i].x, tail.points[i].y, tail.points[i+1].x, tail.points[i+1].y);
+        float currentThickness = (float)thickness;
+        if (fadeThickness) {
+            currentThickness = (float)thickness * ((float)(i + 1) / (float)tail.points.size());
+        }
+
+        if (currentThickness <= 1.0f) {
+            SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
+            SDL_RenderLine(app.getRenderer(), tail.points[i].x, tail.points[i].y, tail.points[i+1].x, tail.points[i+1].y);
+        } else {
+            drawThickLine(tail.points[i], tail.points[i+1], color, currentThickness);
+        }
     }
 }
 
 void Renderer::drawBezier(float2 startPos, float2 endPos, std::vector<float2> controlPoints, SDL_Color color, int thickness) {
-    SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
-    SDL_RenderLine(app.getRenderer(), startPos.x, startPos.y, endPos.x, endPos.y);
+    // Basic implementation for now, drawing segments
+    const int segments = 20;
+    float2 lastPos = startPos;
+    
+    auto getBezierPoint = [&](float t) {
+        if (controlPoints.empty()) {
+            return Math::lerpFloat2(startPos, endPos, t);
+        } else if (controlPoints.size() == 1) {
+            // Quadratic
+            float2 p0 = startPos;
+            float2 p1 = controlPoints[0];
+            float2 p2 = endPos;
+            float u = 1.0f - t;
+            float tt = t * t;
+            float uu = u * u;
+            float2 p = Math::multiply(p0, uu);
+            p = Math::add(p, Math::multiply(p1, 2 * u * t));
+            p = Math::add(p, Math::multiply(p2, tt));
+            return p;
+        } else {
+            // Simple linear for more control points for now
+            return Math::lerpFloat2(startPos, endPos, t);
+        }
+    };
+
+    for (int i = 1; i <= segments; ++i) {
+        float t = (float)i / (float)segments;
+        float2 currentPos = getBezierPoint(t);
+        drawLine(lastPos, currentPos, color, thickness);
+        lastPos = currentPos;
+    }
+}
+
+void Renderer::drawThickLine(float2 start, float2 end, SDL_Color color, float thickness) {
+    float2 dir = Math::subtract(end, start);
+    float2 norm = Math::normalize(dir);
+    float2 perp = Math::perpendicular(norm);
+    float2 offset = Math::multiply(perp, thickness / 2.0f);
+
+    float2 p1 = Math::subtract(start, offset);
+    float2 p2 = Math::add(start, offset);
+    float2 p3 = Math::add(end, offset);
+    float2 p4 = Math::subtract(end, offset);
+
+    SDL_Vertex vertices[4];
+    SDL_FColor fcolor = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f };
+
+    vertices[0] = { { p1.x, p1.y }, fcolor, { 0, 0 } };
+    vertices[1] = { { p2.x, p2.y }, fcolor, { 0, 0 } };
+    vertices[2] = { { p3.x, p3.y }, fcolor, { 0, 0 } };
+    vertices[3] = { { p4.x, p4.y }, fcolor, { 0, 0 } };
+
+    int indices[6] = { 0, 1, 2, 2, 3, 0 };
+
+    SDL_RenderGeometry(app.getRenderer(), nullptr, vertices, 4, indices, 6);
 }
 
 void Renderer::drawText(std::string text, float2 pos, SDL_Color color, int textSize) {
@@ -690,6 +811,114 @@ void Renderer::drawParticles(ParticleEmitter& particleEmitter) {
 
         drawCircle(Circle{ p.pos, size }, color);
     }
+}
+
+void Renderer::applyBloom(float intensity) {
+    if (!sceneTexture || !bloomTexture1 || !bloomTexture2 || intensity <= 0.0f) return;
+
+    // Pass 1: Bright Pass / Extraction
+    // We want to isolate only the brightest parts of the scene.
+    // Since we don't have shaders, we can use SDL_BLENDMODE_MOD with a threshold color.
+    // Anything below the threshold will become much darker.
+    SDL_SetRenderTarget(app.getRenderer(), bloomTexture1);
+    SDL_SetRenderDrawColor(app.getRenderer(), 0, 0, 0, 255);
+    SDL_RenderClear(app.getRenderer());
+
+    // Draw the scene into bloomTexture1
+    SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_NONE);
+    SDL_RenderTexture(app.getRenderer(), sceneTexture, nullptr, nullptr);
+
+    // Multiplicative blend with a "threshold" color (dark) to suppress low-intensity pixels
+    // Using a dark gray means only very bright pixels survive with significant intensity
+    SDL_SetRenderDrawColor(app.getRenderer(), 40, 40, 40, 255); // Threshold factor
+    SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_MOD);
+    SDL_FRect fullRect = { 0, 0, (float)bloomW, (float)bloomH };
+    SDL_RenderFillRect(app.getRenderer(), &fullRect);
+    SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_NONE); // Reset blend mode
+    SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_BLEND); // Ensure sceneTexture isn't stuck in NONE
+
+    // Pass 2: Blur iterations
+    // We'll use bloomTexture2 as temporary buffer
+    // More iterations and varying offsets for a smoother, larger bloom
+    blurTexture(bloomTexture1, bloomTexture2, 5);
+
+    // Final Pass: Additive blend back to scene
+    SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
+    SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_ADD);
+    
+    // We can layer it multiple times for extra "oomph"
+    float alpha = std::clamp(intensity, 0.0f, 1.0f);
+    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 255));
+    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+    
+    // Layer 2: slightly larger and softer
+    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 180));
+    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+
+    // Layer 3: smaller, more intense core
+    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 128));
+    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+    
+    // Restore state
+    SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_NONE); // Reset texture blend mode
+    SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
+}
+
+void Renderer::ensureBloomTextures() {
+    int w = app.getWidth();
+    int h = app.getHeight();
+
+    if (!sceneTexture || w != bloomW * 4 || h != bloomH * 4) {
+        if (sceneTexture) SDL_DestroyTexture(sceneTexture);
+        if (bloomTexture1) SDL_DestroyTexture(bloomTexture1);
+        if (bloomTexture2) SDL_DestroyTexture(bloomTexture2);
+
+        sceneTexture = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
+        
+        bloomW = w / 4;
+        bloomH = h / 4;
+        if (bloomW < 1) bloomW = 1;
+        if (bloomH < 1) bloomH = 1;
+
+        bloomTexture1 = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, bloomW, bloomH);
+        bloomTexture2 = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, bloomW, bloomH);
+    }
+}
+
+void Renderer::blurTexture(SDL_Texture* target, SDL_Texture* temp, int iterations) {
+    for (int i = 0; i < iterations; ++i) {
+        // Exponentially increasing offset for a wider, softer blur
+        float offset = std::pow(1.5f, (float)i);
+        
+        // Horizontal blur
+        SDL_SetRenderTarget(app.getRenderer(), temp);
+        SDL_SetRenderDrawColor(app.getRenderer(), 0, 0, 0, 255);
+        SDL_RenderClear(app.getRenderer());
+        SDL_SetTextureBlendMode(target, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(target, 160); // Slightly more opaque for faster accumulation
+        
+        SDL_FRect rLeft = {-offset, 0, (float)bloomW, (float)bloomH};
+        SDL_FRect rRight = {offset, 0, (float)bloomW, (float)bloomH};
+        SDL_RenderTexture(app.getRenderer(), target, nullptr, &rLeft);
+        SDL_RenderTexture(app.getRenderer(), target, nullptr, &rRight);
+
+        // Vertical blur
+        SDL_SetRenderTarget(app.getRenderer(), target);
+        SDL_SetRenderDrawColor(app.getRenderer(), 0, 0, 0, 255);
+        SDL_RenderClear(app.getRenderer());
+        SDL_SetTextureBlendMode(temp, SDL_BLENDMODE_BLEND);
+        SDL_SetTextureAlphaMod(temp, 160);
+        
+        SDL_FRect rUp = {0, -offset, (float)bloomW, (float)bloomH};
+        SDL_FRect rDown = {0, offset, (float)bloomW, (float)bloomH};
+        SDL_RenderTexture(app.getRenderer(), temp, nullptr, &rUp);
+        SDL_RenderTexture(app.getRenderer(), temp, nullptr, &rDown);
+    }
+    // Final cleanup of texture state
+    SDL_SetTextureBlendMode(target, SDL_BLENDMODE_NONE);
+    SDL_SetTextureAlphaMod(target, 255);
+    SDL_SetTextureBlendMode(temp, SDL_BLENDMODE_NONE);
+    SDL_SetTextureAlphaMod(temp, 255);
 }
 
 void Renderer::screenShake(float durationInSeconds, float intensity, float frequency) {

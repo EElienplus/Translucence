@@ -22,9 +22,28 @@ T cast(T1 value) {
     return static_cast<T>(value);
 }
 
+
 template <typename T>
 std::string toString(T value) {
-    return std::to_string(value);
+    if constexpr (std::is_same_v<T, std::vector<float>>) {
+        std::string res = "[";
+        for (size_t i = 0; i < value.size(); ++i) {
+            res += std::to_string(value[i]);
+            if (i < value.size() - 1) res += ", ";
+        }
+        res += "]";
+        return res;
+    } else {
+        return std::to_string(value);
+    }
+}
+
+inline std::vector<String> toStringVec(std::vector<float> vec) {
+    std::vector<String> returnVec{};
+    for (float f : vec) {
+        returnVec.push_back(toString(f));
+    }
+    return returnVec;
 }
 
 template <typename T>
@@ -37,6 +56,17 @@ void println(T value) {
     std::cout << value << "\n";
 }
 
+template <typename T>
+struct vec2 {
+    T v0;
+    T v1;
+    vec2();
+    vec2(T v0, T v1) {
+        this->v0 = v0;
+        this->v1 = v1;
+    }
+};
+
 struct float2 {
     float x{}, y{};
     float2(float x, float y) {
@@ -45,6 +75,15 @@ struct float2 {
     }
 
     float2() : x(0), y(0) {}
+
+    float2 operator+(const float2& other) const { return {x + other.x, y + other.y}; }
+    float2 operator-(const float2& other) const { return {x - other.x, y - other.y}; }
+    float2 operator*(float s) const { return {x * s, y * s}; }
+    float2 operator/(float s) const { return {x / s, y / s}; }
+    float2& operator+=(const float2& other) { x += other.x; y += other.y; return *this; }
+    float2& operator-=(const float2& other) { x -= other.x; y -= other.y; return *this; }
+    float2& operator*=(float s) { x *= s; y *= s; return *this; }
+    float2& operator/=(float s) { x /= s; y /= s; return *this; }
 };
 
 struct float3 {
@@ -65,6 +104,17 @@ struct float4 {
         this->w = w;
     }
 };
+
+
+template <>
+inline vec2<int> cast<vec2<int>>(float2 value) {
+    return {cast<int>(value.x), cast<int>(value.y)};
+}
+template <>
+inline float2 cast<float2>(vec2<int> value) {
+    return {cast<float>(value.v0), cast<float>(value.v1)};
+}
+
 struct Color {
     // Classic
     static constexpr SDL_Color White = {255, 255, 255, 255};
@@ -179,6 +229,13 @@ struct Triangle {
     float2 pointA;
     float2 pointB;
     float2 pointC;
+};
+
+
+struct Line {
+    float2 startPos;
+    float2 endPos;
+    int thickness = 5;
 };
 
 struct NineSlice {
@@ -358,15 +415,6 @@ inline float2 getTextSize(TTF_Font* font, const std::string& text, const int fon
 
 struct Texture { SDL_Texture* handle = nullptr; int w = 0; int h = 0; bool isValid() const { return handle != nullptr && w > 0 && h > 0; } };
 
-template <typename T>
-struct vec2 {
-    T v0;
-    T v1;
-    vec2();
-    vec2(T v0, T v1) {
-        this->v0 = v0;
-        this->v1 = v1;
-    }
-};
+
 
 #endif //TRANSLUCENCEWORKSPACE_CORE_HPP
