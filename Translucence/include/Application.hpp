@@ -24,6 +24,8 @@ public:
     TTF_Font* getFont();
     int getWidth() const;
     int getHeight() const;
+    int getInitialWidth() const;
+    int getInitialHeight() const;
     int getFontSize();
     bool isRunning();
     int getFPS() const;
@@ -35,12 +37,19 @@ public:
     void setFontSize(int argFontSize);
     void setRunning(bool argIsRunning);
     void setResizable(bool argValue);
+    bool isResizable() const;
     std::string getFontPath();
     float getDeltaTime();
     void updateDeltaTime();
     float getTime();
     void update();
     void triggerError(const std::string& errorMsg);
+
+    void setAutoResizeEnabled(bool enabled);
+    bool isAutoResizeEnabled() const;
+    void registerLayoutManager(class LayoutManager* lm);
+    void unregisterLayoutManager(class LayoutManager* lm);
+    const std::vector<class LayoutManager*>& getLayoutManagers() const;
 
 private:
     SDL_Renderer* renderer = nullptr;
@@ -53,6 +62,8 @@ private:
     SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE;
     int width;
     int height;
+    int initialWidth = 0;
+    int initialHeight = 0;
     std::string title;
     std::string getDefaultFontPath();
     int baseFontSize = 30;
@@ -62,6 +73,8 @@ private:
     uint64_t lastTime = 0;
     float deltaTime = 0.0f;
     bool running = true;
+    bool autoResizeEnabled = true;
+    std::vector<class LayoutManager*> registeredLayouts;
 };
 
 

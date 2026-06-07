@@ -24,6 +24,7 @@ int main() {
     } // I put it into scopes, so I can just collapse it to make the code cleaner
 
     while (app.isRunning()) {
+        app.update();
         events.runEvents();
 
         if (Input::isKeyDown(Input::Key::ESCAPE)) {

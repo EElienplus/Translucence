@@ -7,7 +7,7 @@
 int main () {
     Application app;
     app.create(800, 600, "Smallscale platformer Example");
-    app.setResizable(false);
+    app.setResizable(true);
     Renderer renderer(app);
     EventSystem events(app);
 
@@ -34,6 +34,7 @@ int main () {
     Collider::makeScreenBorderCollider(app);
 
     while (app.isRunning()) {
+        app.update();
         events.runEvents();
         renderer.clearBackground(Color::White);
         float dt =  app.getDeltaTime();

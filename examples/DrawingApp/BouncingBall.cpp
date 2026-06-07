@@ -10,12 +10,9 @@ int main() {
     float2 ballVel = {200, 150};
     float ballRadius = 20.0f;
 
-    uint64_t lastTime = SDL_GetTicks();
-
     while (app.isRunning()) {
-        uint64_t currentTime = SDL_GetTicks();
-        float dt = static_cast<float>(currentTime - lastTime) / 1000.0f;
-        lastTime = currentTime;
+        app.update();
+        float dt = app.getDeltaTime();
 
         events.runEvents();
         if (Input::isKeyDown(Input::Key::ESCAPE)) app.setRunning(false);

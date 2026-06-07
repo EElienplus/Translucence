@@ -15,5 +15,8 @@
 #include <Input.hpp>
 #include <ParticleEmitter.hpp>
 #include <Math.hpp>
+#include <BigNum.hpp>
+#include <UiPanel.hpp>
+#include <Graph.hpp>
 
 #endif // TRANSLUSENCE_LIBRARY_H

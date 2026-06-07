@@ -1,0 +1,2 @@
+add_executable(TerminalSim TerminalSim.cpp)
+target_link_libraries(TerminalSim PRIVATE translucence)

@@ -1,18 +1,14 @@
 #include <Translucence.hpp>
-
 int main() {
     Application app;
-    app.create(1000, 800, "Translucence");
-    Renderer renderer(app);
+    Renderer render(app);
     EventSystem events(app);
 
     while (app.isRunning()) {
         events.runEvents();
-        if (Input::isKeyDown(Input::Key::ESCAPE)) app.setRunning(false);
-        renderer.clearBackground(Color::BgDeep);
+        render.clearBackground(Color::BgDeep);
 
-        renderer.render();
+        render.render();
     }
-
     return 0;
 }

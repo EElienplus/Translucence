@@ -37,7 +37,7 @@ void ImageProcess::fillImage(RawImage& image, const SDL_Color color) {
         pixel = color;
     }
 }
- void ImageProcess::smoothenImage(RawImage& image, int radius) {
+ void ImageProcess::smoothenImage(RawImage& /*image*/, int /*radius*/) {
 
     return;
 }

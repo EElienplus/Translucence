@@ -107,13 +107,14 @@ int main() {
     state.reset(2, {500, 150});
 
     int dragIdx = -1;
-    int speed = 5000;
+    int speed = 2000;
     bool playing = false;
     float g = 9.81f;
     float damping = 1.0f;
     float accumulator = 0.0f;
     const float physicsDt = 0.001f;
     Tail tail;
+    tail.maxLength = 20000;
 
 
     while (app.isRunning()) {

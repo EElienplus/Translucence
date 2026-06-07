@@ -71,9 +71,9 @@ float2 Sprite::getFeetPos() {
     y = height;
     return {x, y};
 }
-void Sprite::update(float scale, float dt) {
-    this->scale = scale;
-    collider.spriteToCollider(*this, scale);
+void Sprite::update(float argScale, float dt) {
+    this->scale = argScale;
+    collider.spriteToCollider(*this, argScale);
     updatePhysics(dt);
 }
 
@@ -102,8 +102,8 @@ void Sprite::updatePhysics(float dt) {
     }
 }
 
-void Sprite::assignCollider(float scale) {
-    collider.spriteToCollider(*this, scale);
+void Sprite::assignCollider(float argScale) {
+    collider.spriteToCollider(*this, argScale);
 }
 
 void Sprite::applyGravity(float strength, float dt) {
@@ -111,7 +111,7 @@ void Sprite::applyGravity(float strength, float dt) {
     pos.y += velocity.y * dt;
 }
 
-void Sprite::resolveCollision(const Collider& other, float scale, bool horizontalOnly) {
+void Sprite::resolveCollision(const Collider& other, float argScale, bool horizontalOnly) {
     if (collider.checkCollision(other)) {
         if (other.getType() == ColliderType::Rect) {
             Rect r = other.getRect();
@@ -121,7 +121,7 @@ void Sprite::resolveCollision(const Collider& other, float scale, bool horizonta
                 float overlapLeft   = (p.x + p.w) - r.x;
                 float overlapRight  = (r.x + r.w) - p.x;
                 if (overlapLeft < overlapRight) {
-                    pos.x = r.x - width * scale;
+                    pos.x = r.x - width * argScale;
                 } else {
                     pos.x = r.x + r.w;
                 }
@@ -130,7 +130,7 @@ void Sprite::resolveCollision(const Collider& other, float scale, bool horizonta
                 float overlapTop    = (p.y + p.h) - r.y;
                 float overlapBottom = (r.y + r.h) - p.y;
                 if (overlapTop < overlapBottom) {
-                    pos.y = r.y - height * scale;
+                    pos.y = r.y - height * argScale;
                     velocity.y = 0;
                     grounded = true;
                 } else {
@@ -139,16 +139,38 @@ void Sprite::resolveCollision(const Collider& other, float scale, bool horizonta
                 }
             }
             // Sync collider position after resolution
-            collider.spriteToCollider(*this, scale);
+            collider.spriteToCollider(*this, argScale);
         }
     }
 }
 
 
-void Sprite::wadMovement(float speed, float jumpStrength, float dt) {
-    velocity.x = 0;
-    if (Input::isKeyDown(Input::Key::A)) velocity.x = -speed;
-    if (Input::isKeyDown(Input::Key::D)) velocity.x = speed;
+void Sprite::wadMovement(float speed, float jumpStrength, float dt, float acceleration, float friction) {
+    float moveInput = 0.0f;
+    if (Input::isKeyDown(Input::Key::A)) moveInput -= 1.0f;
+    if (Input::isKeyDown(Input::Key::D)) moveInput += 1.0f;
+
+    if (moveInput != 0.0f) {
+        float currentAcc = acceleration;
+        // Snappy turning: if we are moving against our current velocity, accelerate faster
+        if (velocity.x != 0 && (moveInput * velocity.x < 0)) {
+            currentAcc += friction * 2.0f;
+        }
+        velocity.x += moveInput * currentAcc * dt;
+    } else {
+        float frictionAmount = friction * 2.5f * dt;
+        if (std::abs(velocity.x) < frictionAmount) {
+            velocity.x = 0;
+        } else {
+            velocity.x -= (velocity.x > 0 ? 1.0f : -1.0f) * frictionAmount;
+        }
+    }
+
+    // Clamp horizontal velocity
+    if (std::abs(velocity.x) > speed) {
+        velocity.x = (velocity.x > 0 ? 1.0f : -1.0f) * speed;
+    }
+
     if (Input::isKeyDown(Input::Key::W)) {
         if (grounded) {
             velocity.y = -jumpStrength;

@@ -13,6 +13,9 @@
 #include <filesystem>
 #include <vector>
 
+#define INT_LIMIT 2147483647
+#define UNSIGNED_INT_LIMIT 4294967295
+
 namespace fs = std::filesystem;
 #define List std::vector
 #define String std::string
@@ -56,6 +59,22 @@ void println(T value) {
     std::cout << value << "\n";
 }
 
+String askForInput(const String& askMsg) {
+    print(askMsg);
+    String reply;
+    std::cin >> reply;
+    return reply;
+}
+
+int stringToInt(String num) {
+    if (num.empty()) return 0;
+    try {
+        return std::stoi(num);
+    } catch (...) {
+        return 0;
+    }
+}
+
 template <typename T>
 struct vec2 {
     T v0;
@@ -84,6 +103,17 @@ struct float2 {
     float2& operator-=(const float2& other) { x -= other.x; y -= other.y; return *this; }
     float2& operator*=(float s) { x *= s; y *= s; return *this; }
     float2& operator/=(float s) { x /= s; y /= s; return *this; }
+
+    [[nodiscard]] float lengthSq() const { return x * x + y * y; }
+    [[nodiscard]] float length() const { return std::sqrt(x * x + y * y); }
+    [[nodiscard]] float2 normalized() const {
+        float len = length();
+        return len > 0 ? *this / len : float2(0, 0);
+    }
+    static float dot(const float2& a, const float2& b) { return a.x * b.x + a.y * b.y; }
+    static float2 lerp(const float2& a, const float2& b, float t) {
+        return a + (b - a) * t;
+    }
 };
 
 struct float3 {
@@ -153,6 +183,18 @@ struct Color {
     static constexpr SDL_Color Lavender = {230, 230, 250, 255};
     static constexpr SDL_Color Ivory = {255, 255, 240, 255};
     static constexpr SDL_Color Silver = {192, 192, 192, 255};
+    static constexpr SDL_Color Gold2 = {255, 215, 0, 255};
+    static constexpr SDL_Color Silver2 = {192, 192, 192, 255};
+    static constexpr SDL_Color Bronze = {205, 127, 50, 255};
+    static constexpr SDL_Color Coral = {255, 127, 80, 255};
+    static constexpr SDL_Color Salmon = {250, 128, 114, 255};
+    static constexpr SDL_Color Khaki = {240, 230, 140, 255};
+    static constexpr SDL_Color Plum = {221, 160, 221, 255};
+    static constexpr SDL_Color Orchid = {218, 112, 214, 255};
+    static constexpr SDL_Color Tan = {210, 180, 140, 255};
+    static constexpr SDL_Color RosyBrown = {188, 143, 143, 255};
+    static constexpr SDL_Color SeaGreen = {46, 139, 87, 255};
+    static constexpr SDL_Color RoyalBlue = {65, 105, 225, 255};
     static constexpr SDL_Color Transparent = {0, 0, 0, 0};
 
     // Modern UI surface palette — designed to look good out of the box.
@@ -202,6 +244,27 @@ struct Color {
         };
         return {lerp(a.r, b.r), lerp(a.g, b.g), lerp(a.b, b.b), lerp(a.a, b.a)};
     }
+
+    static SDL_Color multiply(SDL_Color color1, SDL_Color color2) {
+        SDL_Color result;
+
+        result.r = (Uint8)(((int)color1.r * color2.r) / 255);
+        result.g = (Uint8)(((int)color1.g * color2.g) / 255);
+        result.b = (Uint8)(((int)color1.b * color2.b) / 255);
+        result.a = (Uint8)(((int)color1.a * color2.a) / 255);
+
+        return result;
+    }
+
+    static SDL_FColor toFColor(SDL_Color color) {
+        SDL_FColor result;
+        result.r = color.r / 255;
+        result.g = color.g / 255;
+        result.b = color.b / 255;
+        result.a = color.a / 255;
+        return result;
+    }
+
 };
 
 struct Rect {
@@ -333,11 +396,27 @@ struct Button {
 struct Slider {
     Rect rect;
     float value = 0.5f;
+    bool enabled = true;
     SDL_Color color = Color::BgElevated; // Track background
     SDL_Color fillColor = Color::Accent; // Fill (auto-used when set, derived otherwise)
     SDL_Color knobColor = Color::White;
+    SDL_Color knobOutlineColor = Color::Border;
     int knobSize = 18;
     int roundRadius = 4;
+    float step = 0.0f; // 0 means continuous
+
+    // State
+    bool isDragging = false;
+    float hoverProgress = 0.0f;
+    float animationSpeed = 10.0f;
+
+    void update(float dt, bool isHovered) {
+        if (enabled && (isHovered || isDragging)) {
+            hoverProgress = std::min(1.0f, hoverProgress + dt * animationSpeed);
+        } else {
+            hoverProgress = std::max(0.0f, hoverProgress - dt * animationSpeed);
+        }
+    }
 };
 
 struct InputField {
@@ -345,11 +424,13 @@ struct InputField {
     std::string value;
     std::string placeholder; // Shown when value is empty
     bool enabled = false; // Active editing state (focus); managed by the renderer
+    bool hasStartedTextInput = false; // Internal flag to ensure SDL_StartTextInput is called once
     SDL_Color color = Color::BgElevated;
     SDL_Color textColor = Color::TextPrimary;
     SDL_Color placeholderColor = Color::TextMuted;
     SDL_Color borderColor = Color::Border;
     SDL_Color focusColor = Color::Accent;
+    SDL_Color selectionColor = { 0, 120, 215, 128 }; // Default blueish highlight
     int textSize = 18;
     int roundRadius = 8;
     float animationSpeed = 10.0f;
@@ -357,16 +438,114 @@ struct InputField {
     bool multiLine = false;
     bool wrap = false;
 
+    // Advanced state
+    int cursorPos = 0;
+    int selectionStart = -1; // -1 means no selection
+    float cursorTimer = 0.0f;
+    float backspaceTimer = 0.0f;
+    float scrollOffset = 0.0f;
+    float verticalScrollOffset = 0.0f;
+    bool cursorVisible = true;
+
+    // Filtering
+    bool numericOnly = false;
+    std::string allowedChars;
+
+    // Terminal/Protected features
+    int protectedLen = 0;
+    std::function<void(const std::string&)> onTextSubmit;
+    std::function<void(class Renderer&, const std::string&, float2, SDL_Color, int)> lineRenderer;
+
     void update(float dt) {
         if (enabled) {
             focusProgress = std::min(1.0f, focusProgress + dt * animationSpeed);
+            cursorTimer += dt;
+            if (cursorTimer >= 0.5f) {
+                cursorTimer -= 0.5f;
+                cursorVisible = !cursorVisible;
+            }
         } else {
             focusProgress = std::max(0.0f, focusProgress - dt * animationSpeed);
+            cursorVisible = false;
+            cursorTimer = 0.0f;
+            selectionStart = -1;
         }
+
+        // Clamp cursorPos
+        if (cursorPos < 0) cursorPos = 0;
+        if (cursorPos > (int)value.length()) cursorPos = (int)value.length();
+    }
+
+    void clearSelection() { selectionStart = -1; }
+    [[nodiscard]] bool hasSelection() const { return selectionStart != -1 && selectionStart != cursorPos; }
+    [[nodiscard]] std::pair<int, int> getSelectionRange() const {
+        if (!hasSelection()) return {cursorPos, cursorPos};
+        return {std::min(selectionStart, cursorPos), std::max(selectionStart, cursorPos)};
+    }
+
+    void appendText(const std::string& text) {
+        value += text;
+        cursorPos = (int)value.length();
+        protectedLen = (int)value.length();
     }
 
     [[nodiscard]] SDL_Color getEffectiveBorderColor() const {
         return Color::mix(borderColor, focusColor, focusProgress);
+    }
+};
+
+struct ColorPicker {
+    Rect rect;
+    SDL_Color color = Color::White;
+    float hue = 0.0f;
+    float saturation = 1.0f;
+    float value = 1.0f;
+    bool enabled = true;
+
+    // State
+    bool isDraggingHue = false;
+    bool isDraggingSV = false;
+
+    void updateFromColor() {
+        float r = color.r / 255.0f;
+        float g = color.g / 255.0f;
+        float b = color.b / 255.0f;
+        float maxVal = std::max({r, g, b});
+        float minVal = std::min({r, g, b});
+        float delta = maxVal - minVal;
+
+        value = maxVal;
+        saturation = (maxVal == 0) ? 0 : delta / maxVal;
+
+        if (delta == 0) {
+            hue = 0;
+        } else {
+            if (maxVal == r) {
+                hue = 60.0f * fmodf(((g - b) / delta), 6.0f);
+            } else if (maxVal == g) {
+                hue = 60.0f * (((b - r) / delta) + 2.0f);
+            } else if (maxVal == b) {
+                hue = 60.0f * (((r - g) / delta) + 4.0f);
+            }
+            if (hue < 0) hue += 360.0f;
+        }
+    }
+
+    void updateColorFromHSV() {
+        float c = value * saturation;
+        float x = c * (1.0f - fabsf(fmodf(hue / 60.0f, 2.0f) - 1.0f));
+        float m = value - c;
+        float r, g, b;
+        if (hue >= 0 && hue < 60) { r = c; g = x; b = 0; }
+        else if (hue >= 60 && hue < 120) { r = x; g = c; b = 0; }
+        else if (hue >= 120 && hue < 180) { r = 0; g = c; b = x; }
+        else if (hue >= 180 && hue < 240) { r = 0; g = x; b = c; }
+        else if (hue >= 240 && hue < 300) { r = x; g = 0; b = c; }
+        else { r = c; g = 0; b = x; }
+        color.r = static_cast<Uint8>((r + m) * 255);
+        color.g = static_cast<Uint8>((g + m) * 255);
+        color.b = static_cast<Uint8>((b + m) * 255);
+        color.a = 255;
     }
 };
 
@@ -415,6 +594,11 @@ inline float2 getTextSize(TTF_Font* font, const std::string& text, const int fon
 
 struct Texture { SDL_Texture* handle = nullptr; int w = 0; int h = 0; bool isValid() const { return handle != nullptr && w > 0 && h > 0; } };
 
-
+struct OutlineProperties {
+    bool enabled = false;
+    SDL_Color color{0, 0, 0, 255};
+    int width{5};
+    float opacity{1.0};
+};
 
 #endif //TRANSLUCENCEWORKSPACE_CORE_HPP

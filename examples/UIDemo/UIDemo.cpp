@@ -16,7 +16,7 @@ int main() {
     Button btn3;
     btn3.text = "Blue Button";
     btn3.bgColor = Color::Accent;
-    btn3.roundRadius = 15; // Extra round forbtn3
+    btn3.roundRadius = 15; // Extra round
 
     while (app.isRunning()) {
         events.runEvents();
@@ -25,6 +25,9 @@ int main() {
 
         renderer.column(300, 20, 10);
         {
+            renderer.drawText("Main Menu", Color::White, 40);
+            renderer.space(10);
+
             renderer.drawButton(btn1, 300, 50);
             if (btn1.isClickedOnce) println("Button 1 clicked!");
 
@@ -33,11 +36,17 @@ int main() {
 
             renderer.space(20);
 
+            renderer.drawText("Settings", Color::White, 25);
             renderer.drawButton(btn3, 300, 60);
             if (btn3.isClickedOnce) println("Confirm clicked!");
 
             renderer.space(20);
-            
+
+            // Generic drawing in layout
+            Rect nextArea = renderer.getNextRect(300, 40);
+            renderer.drawRect(nextArea, Color::withAlpha(Color::White, 50));
+            renderer.drawRectOutline(nextArea, Color::White, 2);
+            renderer.drawText("Generic Area", {nextArea.x + 10, nextArea.y + 10}, Color::White, 20);
         }
 
         renderer.render();

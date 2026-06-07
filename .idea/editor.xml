@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="BackendCodeEditorSettings">
+    <option name="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=F985DACC_002DAF53_002D548F_002DB571_002DA6BA22980DFD_002Fd_003ATranslucence_002Fd_003Asrc_002Ff_003ARenderer_002Ecpp/@EntryIndexedValue" value="ForceIncluded" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CDeclarationWithImplicitIntType/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CommentTypo/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=ConstevalIfIsAlwaysConstant/@EntryIndexedValue" value="WARNING" type="string" />
@@ -15,7 +16,7 @@
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppBoostFormatMixedArgs/@EntryIndexedValue" value="ERROR" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppBoostFormatTooFewArgs/@EntryIndexedValue" value="ERROR" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppBoostFormatTooManyArgs/@EntryIndexedValue" value="WARNING" type="string" />
-    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppCStyleCast/@EntryIndexedValue" value="SUGGESTION" type="string" />
+    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppCStyleCast/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppCVQualifierCanNotBeAppliedToReference/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppClassCanBeFinal/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppClassIsIncomplete/@EntryIndexedValue" value="WARNING" type="string" />
@@ -108,12 +109,12 @@
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppInvalidLineContinuation/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppJoinDeclarationAndAssignment/@EntryIndexedValue" value="SUGGESTION" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLambdaCaptureNeverUsed/@EntryIndexedValue" value="WARNING" type="string" />
-    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLocalVariableMayBeConst/@EntryIndexedValue" value="HINT" type="string" />
+    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLocalVariableMayBeConst/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLocalVariableMightNotBeInitialized/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLocalVariableWithNonTrivialDtorIsNeverUsed/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppLongFloat/@EntryIndexedValue" value="WARNING" type="string" />
-    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMemberFunctionMayBeConst/@EntryIndexedValue" value="SUGGESTION" type="string" />
-    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMemberFunctionMayBeStatic/@EntryIndexedValue" value="SUGGESTION" type="string" />
+    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMemberFunctionMayBeConst/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
+    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMemberFunctionMayBeStatic/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMemberInitializersOrder/@EntryIndexedValue" value="SUGGESTION" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMismatchedClassTags/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppMissingIncludeGuard/@EntryIndexedValue" value="WARNING" type="string" />
@@ -209,7 +210,7 @@
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppTemplateParameterShadowing/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppThrowExpressionCanBeReplacedWithRethrow/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppTooWideScope/@EntryIndexedValue" value="SUGGESTION" type="string" />
-    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppTooWideScopeInitStatement/@EntryIndexedValue" value="HINT" type="string" />
+    <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppTooWideScopeInitStatement/@EntryIndexedValue" value="DO_NOT_SHOW" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppTypeAliasNeverUsed/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppUninitializedDependentBaseClass/@EntryIndexedValue" value="WARNING" type="string" />
     <option name="/Default/CodeInspection/Highlighting/InspectionSeverities/=CppUninitializedNonStaticDataMember/@EntryIndexedValue" value="WARNING" type="string" />

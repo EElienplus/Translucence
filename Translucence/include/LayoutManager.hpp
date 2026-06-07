@@ -40,8 +40,15 @@ public:
     /**
      * @brief Initialize layout with application dimensions.
      */
-    explicit LayoutManager(class Application& app) {
+    explicit LayoutManager(class Application& app) : app(&app) {
         begin({ 0, 0, (float)app.getWidth(), (float)app.getHeight() });
+        app.registerLayoutManager(this);
+    }
+
+    ~LayoutManager() {
+        if (app) {
+            app->unregisterLayoutManager(this);
+        }
     }
 
     /**
@@ -185,14 +192,16 @@ public:
         else current.cursor.x += amount;
     }
 
-    void reset(Rect container) {
-        begin(container, current.direction, current.padding, current.spacing, current.margin);
+    void reset(Rect container, Direction dir = Direction::Vertical) {
+        begin(container, dir, current.padding, current.spacing, current.margin);
     }
 
     const State& getState() const { return current; }
+    const std::vector<State>& getStateStack() const { return stack; }
     Rect getContainer() const { return current.container; }
 
 private:
+    class Application* app = nullptr;
     State current;
     std::vector<State> stack;
 };

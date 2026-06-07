@@ -16,6 +16,7 @@ set(LIB_SOURCES
         src/MwFile.cpp
         src/Mtf.cpp
         src/ParticleEmitter.cpp
+        src/Graph.cpp
 )
 
 set(LIB_HEADERS
@@ -33,6 +34,9 @@ set(LIB_HEADERS
         include/MwFile.hpp
         include/Mtf.hpp
         include/ParticleEmitter.hpp
+        src/UiPanel.cpp
+        include/UiPanel.hpp
+        include/Graph.hpp
 )
 
 add_library(translucence STATIC ${LIB_SOURCES} ${LIB_HEADERS})
@@ -47,5 +51,9 @@ target_link_libraries(translucence PUBLIC
         SDL3_image::SDL3_image
         SDL3_mixer::SDL3_mixer
 )
+
+if(APPLE)
+    target_link_libraries(translucence PUBLIC "-framework Foundation" "-framework QuartzCore")
+endif()
 
 target_compile_definitions(translucence PRIVATE TRANSLUCENCE_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources/")

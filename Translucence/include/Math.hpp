@@ -12,6 +12,8 @@
 #include <vector>
 #include <algorithm>
 #include <stdexcept>
+#include <cmath>
+#include <limits>
 
 namespace Math {
     inline float pi = 3.1415927f;
@@ -87,14 +89,74 @@ namespace Math {
         return { a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
     }
 
+
+
+
     inline float clamp(float min, float max, float value) {
         if (value < min) return min;
         if (value > max) return max;
         return value;
     }
 
-    inline float lerp(float a, float b, float t) {
-        return a + t * (b - a);
+    namespace Ease {
+
+        inline float lerp(float a, float b, float t) {
+            return a + t * (b - a);
+        }
+
+        inline float quadLerpIn(float a, float b, float t) {
+            return a + (b - a) * (t * t);
+        }
+
+        inline float quadLerpOut(float a, float b, float t) {
+            return a + (b - a) * (1.0f - (1.0f - t) * (1.0f - t));
+        }
+
+        inline float cubicLerpIn(float a, float b, float t) {
+            return a + (b - a) * (t * t * t);
+        }
+
+        inline float cubicLerpOut(float a, float b, float t) {
+            float flip = 1.0f - t;
+            return a + (b - a) * (1.0f - flip * flip * flip);
+        }
+
+        inline float quarticLerpIn(float a, float b, float t) {
+            return a + (b - a) * (t * t * t * t);
+        }
+
+        inline float quarticLerpOut(float a, float b, float t) {
+            float flip = 1.0f - t;
+            return a + (b - a) * (1.0f - flip * flip * flip * flip);
+        }
+
+
+            inline float quadLerpInOut(float a, float b, float t) {
+                float distance = b - a;
+                if (t < 0.5f) {
+                    return a + distance * (2.0f * t * t);
+                } else {
+                    return a + distance * (1.0f - std::pow(-2.0f * t + 2.0f, 2.0f) * 0.5f);
+                }
+            }
+            inline float cubicLerpInOut(float a, float b, float t) {
+                float distance = b - a;
+                if (t < 0.5f) {
+                    return a + distance * (4.0f * t * t * t);
+                } else {
+                    return a + distance * (1.0f - std::pow(-2.0f * t + 2.0f, 3.0f) * 0.5f);
+                }
+            }
+
+            inline float quarticLerpInOut(float a, float b, float t) {
+                float distance = b - a;
+                if (t < 0.5f) {
+                    return a + distance * (8.0f * t * t * t * t);
+                } else {
+                    return a + distance * (1.0f - std::pow(-2.0f * t + 2.0f, 4.0f) * 0.5f);
+                }
+            }
+
     }
 
     inline bool isOutsideScreen(const Rect& rect, const Application& app) {
@@ -318,6 +380,78 @@ namespace Math {
 
         return result;
     }
+
+    /**
+     * @brief Converts an integer between bases.
+     */
+    inline std::string convertBase(int value, int fromBase, int toBase) {
+        if (fromBase < 2 || toBase < 2) {
+            throw std::out_of_range("Bases must be at least 2.");
+        }
+        if (value == 0) return "0";
+
+        // Convert to base 10 first
+        unsigned long long decimalValue = 0;
+        unsigned long long power = 1;
+        int tempValue = std::abs(value);
+
+        while (tempValue > 0) {
+            int digit = tempValue % 10;
+            decimalValue += digit * power;
+            power *= fromBase;
+            tempValue /= 10;
+        }
+
+        // Convert from base 10 to target base
+        std::string result = "";
+        while (decimalValue > 0) {
+            result += BASE_CHARS[decimalValue % toBase];
+            decimalValue /= toBase;
+        }
+
+        if (value < 0) result += '-';
+        std::reverse(result.begin(), result.end());
+
+        return result;
+    }
+
+    inline void applyGravity(float2& pos, float2& vel, float dt, float gravityStrength) {
+        vel.y += gravityStrength * dt;
+        pos += vel * dt;
+    }
+
+    // Will apply a force that will repel objects, using the object pos and vel to move the obj
+    inline void applyForce(float2 &objectPos, float2& objectVelocity, float2 point, float radius, float strength, float dt) {
+        float2 away = objectPos - point;
+        float dist = length(away);
+
+        if (dist <= 0.0f || dist > radius) {
+            return;
+        }
+
+        float2 direction = away / dist;
+        float falloff = 1.0f - (dist / radius);
+        float force = strength * falloff;
+
+        objectVelocity += direction * force * dt;
+    }
+
+    inline float tickCounter(float& elapsedSeconds, float durationMs, float deltaTime) {
+        float targetSeconds = durationMs / 1000.0f;
+
+        // Advance the clock frame-rate independently
+        elapsedSeconds += deltaTime;
+
+        // Clamp to ensure it doesn't overshoot the target duration
+        if (elapsedSeconds > targetSeconds) {
+            elapsedSeconds = targetSeconds;
+        }
+
+        // Return the current raw millisecond count
+        return elapsedSeconds * 1000.0f;
+    }
+
 }
+
 
 #endif //TRANSLUCENCEWORKSPACE_MATH_HPP

@@ -6,6 +6,7 @@
 #include <cmath>
 #include <sstream>
 #include <algorithm>
+#include <cctype>
 
 #include "Math.hpp"
 
@@ -30,6 +31,11 @@ void Renderer::clearBackground(SDL_Color color) {
     applyScreenShake(app.getDeltaTime());
 
     ensureBloomTextures();
+
+    if (activeLayout && app.isAutoResizeEnabled()) {
+        activeLayout->reset({ 0, 0, (float)app.getWidth(), (float)app.getHeight() });
+    }
+
     if (sceneTexture) {
         SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
     }
@@ -39,6 +45,10 @@ void Renderer::clearBackground(SDL_Color color) {
 }
 
 void Renderer::render() {
+    // Auto-reset layout stack to avoid buildup if user misses end() calls
+    while (activeLayout && !activeLayout->getStateStack().empty()) {
+        activeLayout->pop();
+    }
     end();
 
     if (sceneTexture) {
@@ -53,16 +63,23 @@ void Renderer::render() {
     resetScreenShake();
 
     SDL_RenderPresent(app.getRenderer());
-    app.update();
 }
 
 void Renderer::drawRect(Rect rect, SDL_Color color) {
+    if (app.isAutoResizeEnabled()) {
+        if (rect.h == (float)app.getInitialHeight()) rect.h = (float)app.getHeight();
+        if (rect.w == (float)app.getInitialWidth()) rect.w = (float)app.getWidth();
+    }
     SDL_FRect fRect = { rect.x, rect.y, rect.w, rect.h };
     SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
     SDL_RenderFillRect(app.getRenderer(), &fRect);
 }
 
 void Renderer::drawRectOutline(Rect rect, SDL_Color color, int thickness) {
+    if (app.isAutoResizeEnabled()) {
+        if (rect.h == (float)app.getInitialHeight()) rect.h = (float)app.getHeight();
+        if (rect.w == (float)app.getInitialWidth()) rect.w = (float)app.getWidth();
+    }
     if (thickness <= 1) {
         SDL_SetRenderDrawColor(app.getRenderer(), color.r, color.g, color.b, color.a);
         SDL_FRect fRect = { rect.x, rect.y, rect.w, rect.h };
@@ -81,6 +98,10 @@ void Renderer::drawRectOutline(Rect rect, SDL_Color color, int thickness) {
 }
 
 void Renderer::drawRoundedRect(Rect rect, SDL_Color color, float radius) {
+    if (app.isAutoResizeEnabled()) {
+        if (rect.h == (float)app.getInitialHeight()) rect.h = (float)app.getHeight();
+        if (rect.w == (float)app.getInitialWidth()) rect.w = (float)app.getWidth();
+    }
     if (radius <= 0) {
         drawRect(rect, color);
         return;
@@ -112,6 +133,10 @@ void Renderer::drawRoundedRect(Rect rect, SDL_Color color, float radius) {
 }
 
 void Renderer::drawRoundedRectOutline(Rect rect, SDL_Color color, float radius, int thickness) {
+    if (app.isAutoResizeEnabled()) {
+        if (rect.h == (float)app.getInitialHeight()) rect.h = (float)app.getHeight();
+        if (rect.w == (float)app.getInitialWidth()) rect.w = (float)app.getWidth();
+    }
     if (radius <= 0) {
         drawRectOutline(rect, color, thickness);
         return;
@@ -120,7 +145,7 @@ void Renderer::drawRoundedRectOutline(Rect rect, SDL_Color color, float radius, 
     radius = std::min({radius, rect.w / 2.0f, rect.h / 2.0f});
 
     auto drawArcThick = [&](float2 center, float startAngle, float endAngle) {
-        const int segments = 16;
+        constexpr int segments = 16;
         float2 lastPos = {
             center.x + std::cos(startAngle) * radius,
             center.y + std::sin(startAngle) * radius
@@ -155,7 +180,7 @@ void Renderer::drawRoundedRectOutline(Rect rect, SDL_Color color, float radius, 
 }
 
 void Renderer::drawCircle(Circle circle, SDL_Color color) {
-    const int segments = 64;
+    constexpr int segments = 64;
     std::vector<SDL_Vertex> vertices;
     SDL_FColor fcolor = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f };
 
@@ -178,7 +203,7 @@ void Renderer::drawCircle(Circle circle, SDL_Color color) {
 }
 
 void Renderer::drawCircleOutline(Circle circle, SDL_Color color, int thickness) {
-    const int segments = 64;
+    constexpr int segments = 64;
     float2 lastPos = { circle.pos.x + circle.radius, circle.pos.y };
 
     for (int i = 1; i <= segments; ++i) {
@@ -261,8 +286,11 @@ void Renderer::drawLine(Line line, SDL_Color color) {
 }
 
 void Renderer::drawTail(Tail& tail, float2 point, SDL_Color color, int thickness, bool fadeThickness) {
-    tail.points.push_back(point);
-    if (tail.points.size() > static_cast<size_t>(tail.maxLength)) {
+    if (tail.points.empty() || Math::distance(tail.points.back(), point) > 0.1f) {
+        tail.points.push_back(point);
+    }
+    
+    while (tail.points.size() > static_cast<size_t>(tail.maxLength)) {
         tail.points.erase(tail.points.begin());
     }
     if (tail.points.size() < 2) return;
@@ -357,6 +385,24 @@ void Renderer::drawText(std::string text, float2 pos, SDL_Color color, int textS
     }
 }
 
+void Renderer::drawText(std::string text, SDL_Color color, int textSize, float w, float h) {
+    if (text.empty()) return;
+    if (!app.getFont() || !app.getTextEngine()) return;
+
+    TTF_Font* font = app.getFont();
+    float2 size = getTextSize(font, text, textSize);
+
+    // If w or h is <= 0, we use the text's natural size
+    float targetW = (w <= 0) ? size.x : w;
+    float targetH = (h <= 0) ? size.y + 4 : h; // Added 4px vertical padding
+
+    Rect r = getNextRect(targetW, targetH);
+
+    // Center text within the allocated rectangle
+    float2 pos = { r.x + (r.w - size.x) / 2.0f, r.y + (r.h - size.y) / 2.0f };
+    drawText(text, pos, color, textSize);
+}
+
 void Renderer::drawList(const std::vector<std::string>& list, float2 pos, SDL_Color color, int textSize) {
     float currentY = pos.y;
     for (const auto& str : list) {
@@ -369,12 +415,46 @@ void Renderer::useLayout(LayoutManager* lm) {
     activeLayout = lm;
 }
 
+Rect Renderer::getNextRect(float w, float h) {
+    float finalW = w;
+    float finalH = h;
+    if (app.isAutoResizeEnabled()) {
+        if (h == (float)app.getInitialHeight()) finalH = (float)app.getHeight();
+        if (w == (float)app.getInitialWidth()) finalW = (float)app.getWidth();
+    }
+    if (activeLayout) return activeLayout->next(finalW, finalH);
+    return { 0, 0, finalW, finalH };
+}
+
+Rect applyMagicScaling(const Application& app, Rect rect) {
+    if (!app.isAutoResizeEnabled()) return rect;
+
+    int iw = app.getInitialWidth();
+    int ih = app.getInitialHeight();
+    if (iw <= 0 || ih <= 0) return rect;
+
+    int cw = app.getWidth();
+    int ch = app.getHeight();
+
+    Rect scaled = rect;
+    if (static_cast<int>(rect.w) == iw) scaled.w = static_cast<float>(cw);
+    if (static_cast<int>(rect.h) == ih) scaled.h = static_cast<float>(ch);
+    if (static_cast<int>(rect.x) == iw) scaled.x = static_cast<float>(cw);
+    if (static_cast<int>(rect.y) == ih) scaled.y = static_cast<float>(ch);
+
+    return scaled;
+}
+
 void Renderer::row(float h, float padding, float spacing) {
-    if (activeLayout) activeLayout->row(h, padding, spacing);
+    float finalH = h;
+    if (app.isAutoResizeEnabled() && h == (float)app.getInitialHeight()) finalH = (float)app.getHeight();
+    if (activeLayout) activeLayout->row(finalH, padding, spacing);
 }
 
 void Renderer::column(float w, float padding, float spacing) {
-    if (activeLayout) activeLayout->column(w, padding, spacing);
+    float finalW = w;
+    if (app.isAutoResizeEnabled() && w == (float)app.getInitialWidth()) finalW = (float)app.getWidth();
+    if (activeLayout) activeLayout->column(finalW, padding, spacing);
 }
 
 void Renderer::end() {
@@ -423,7 +503,7 @@ void Renderer::drawGridLines(Rect area, int tilesX, int tilesY, SDL_Color color,
     }
 }
 
-Button& Renderer::drawButton(Button& params) {
+void Renderer::drawButton(Button& params) {
     // Interactivity
     float2 mousePos = Input::getMousePos();
     params.isHovered = Input::isMouseHoveringRect(mousePos, params.rect);
@@ -453,126 +533,736 @@ Button& Renderer::drawButton(Button& params) {
         float2 textPos = Math::getPosWithinButton(app.getFont(), params.text, fontSize, drawRect);
         drawText(params.text, textPos, params.textColor, fontSize);
     }
-    return params;
 }
 
-Button& Renderer::drawButton(Button& params, LayoutManager& layout, float w, float h) {
+void Renderer::drawButton(Button& params, LayoutManager& layout, float w, float h) {
     params.rect = layout.next(w, h);
     return drawButton(params);
 }
 
-Button& Renderer::drawButton(Button& params, float w, float h) {
-    if (activeLayout) params.rect = activeLayout->next(w, h);
+void Renderer::drawButton(Button& params, float w, float h) {
+    params.rect = getNextRect(w, h);
     return drawButton(params);
 }
 
-Slider& Renderer::drawSlider(Slider& params) {
-    drawRoundedRect(params.rect, params.color, (float)params.roundRadius);
+void Renderer::drawSlider(Slider& params) {
+    float dt = app.getDeltaTime();
+    float2 mousePos = Input::getMousePos();
+    bool isHovered = Input::isMouseHoveringRect(mousePos, params.rect);
+
+    if (params.enabled) {
+        if (Input::isMouseButtonPressed(static_cast<uint8_t>(Input::MouseButton::LEFT))) {
+            if (isHovered) {
+                params.isDragging = true;
+            }
+        }
+
+        if (params.isDragging) {
+            if (Input::isMouseButtonDown(static_cast<uint8_t>(Input::MouseButton::LEFT))) {
+                if (params.rect.w > 0) {
+                    float newValue = (mousePos.x - params.rect.x) / params.rect.w;
+                    newValue = std::max(0.0f, std::min(1.0f, newValue));
+                    
+                    if (params.step > 0.0f) {
+                        newValue = std::round(newValue / params.step) * params.step;
+                        newValue = std::max(0.0f, std::min(1.0f, newValue));
+                    }
+                    
+                    params.value = newValue;
+                }
+            } else {
+                params.isDragging = false;
+            }
+        }
+    } else {
+        params.isDragging = false;
+    }
+
+    params.update(dt, isHovered);
+
+    // Visual styles
+    SDL_Color trackColor = params.color;
+    SDL_Color fillCol = params.fillColor;
+    SDL_Color knobCol = params.knobColor;
+    SDL_Color knobOutlineCol = params.knobOutlineColor;
+
+    if (!params.enabled) {
+        trackColor = Color::mix(trackColor, Color::Black, 0.2f);
+        fillCol = Color::mix(fillCol, Color::Black, 0.4f);
+        knobCol = Color::mix(knobCol, Color::Black, 0.2f);
+    } else if (params.hoverProgress > 0.0f) {
+        trackColor = Color::mix(trackColor, Color::lighten(trackColor, 0.05f), params.hoverProgress);
+        fillCol = Color::mix(fillCol, Color::lighten(fillCol, 0.1f), params.hoverProgress);
+    }
+
+    // Draw track
+    drawRoundedRect(params.rect, trackColor, (float)params.roundRadius);
+
+    // Draw fill
     Rect fillRect = { params.rect.x, params.rect.y, params.rect.w * params.value, params.rect.h };
-    drawRoundedRect(fillRect, params.fillColor, (float)params.roundRadius);
+    drawRoundedRect(fillRect, fillCol, (float)params.roundRadius);
 
+    // Draw knob
     float knobX = params.rect.x + (params.rect.w * params.value);
-    drawCircle(Circle{ {knobX, params.rect.y + params.rect.h * 0.5f}, static_cast<float>(params.knobSize) * 0.5f }, params.knobColor);
-    return params;
+    float animatedKnobSize = static_cast<float>(params.knobSize);
+    if (params.enabled) {
+        animatedKnobSize += (params.hoverProgress * 4.0f);
+    }
+    
+    Circle knobCircle = { {knobX, params.rect.y + params.rect.h * 0.5f}, animatedKnobSize * 0.5f };
+    drawCircle(knobCircle, knobCol);
+    
+    // Knob outline
+    if (params.enabled) {
+         SDL_Color outlineCol = Color::mix(knobOutlineCol, Color::Accent, params.hoverProgress);
+         drawCircleOutline(knobCircle, outlineCol, 1);
+    } else {
+         drawCircleOutline(knobCircle, knobOutlineCol, 1);
+    }
+    
 }
 
-Slider& Renderer::drawSlider(Slider& params, LayoutManager& layout, float w, float h) {
+void Renderer::drawSlider(Slider& params, LayoutManager& layout, float w, float h) {
     params.rect = layout.next(w, h);
     return drawSlider(params);
 }
 
-Slider& Renderer::drawSlider(Slider& params, float w, float h) {
-    if (activeLayout) params.rect = activeLayout->next(w, h);
+void Renderer::drawSlider(Slider& params, float w, float h) {
+    params.rect = getNextRect(w, h);
     return drawSlider(params);
 }
 
-InputField& Renderer::drawInputField(InputField& params) {
-    if (Input::isMouseButtonPressed(static_cast<uint8_t>(Input::MouseButton::LEFT))) {
-        bool clickedInside = Input::isMouseHoveringRect(Input::getMousePos(), params.rect);
-        if (clickedInside) {
-            if (!params.enabled) {
+void Renderer::drawInputField(InputField& params) {
+    float dt = app.getDeltaTime();
+    TTF_Font* font = app.getFont();
+    if (!font) return;
+
+    bool isMousePressed = Input::isMouseButtonPressed(static_cast<uint8_t>(Input::MouseButton::LEFT));
+    bool isMouseDown = Input::isMouseButtonDown(static_cast<uint8_t>(Input::MouseButton::LEFT));
+    bool isHovered = Input::isMouseHoveringRect(Input::getMousePos(), params.rect);
+
+    // Focus management
+    if (isMousePressed) {
+        if (isHovered) {
+            if (focusedField != &params) {
+                focusedField = &params;
                 params.enabled = true;
                 SDL_StartTextInput(app.getWindow());
+                params.hasStartedTextInput = true;
+                params.cursorPos = (int)params.value.length();
+                params.clearSelection();
+                return; // Skip further processing this frame to avoid immediate selection
             }
-        } else {
-            if (params.enabled) {
-                params.enabled = false;
-                SDL_StopTextInput(app.getWindow());
+            
+            // Set cursor position by click
+            float margin = 5.0f;
+            float lineSpacing = 4.0f;
+            float lineHeight = (float)params.textSize + lineSpacing;
+            
+            if (params.multiLine) {
+                float mouseRelY = Input::getMouseY() - (params.rect.y + 4.0f - params.verticalScrollOffset);
+                int lineIdx = std::max(0, (int)std::floor(mouseRelY / lineHeight));
+                
+                std::vector<std::string> lines;
+                std::string line;
+                std::stringstream ss(params.value);
+                while (std::getline(ss, line, '\n')) lines.push_back(line);
+                if (!params.value.empty() && params.value.back() == '\n') lines.push_back("");
+                if (params.value.empty()) lines.push_back("");
+                
+                if (lineIdx >= (int)lines.size()) lineIdx = (int)lines.size() - 1;
+                
+                int charOffset = 0;
+                for (int i = 0; i < lineIdx; ++i) charOffset += (int)lines[i].length() + 1;
+                
+                float mouseRelX = Input::getMouseX() - (params.rect.x + margin);
+                int bestPosInLine = 0;
+                float bestDist = 10000.0f;
+                const std::string& currentLineText = lines[lineIdx];
+                for (int i = 0; i <= (int)currentLineText.length(); ++i) {
+                    std::string sub = currentLineText.substr(0, i);
+                    float2 subSize = getTextSize(font, sub, params.textSize);
+                    float dist = std::abs(subSize.x - mouseRelX);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPosInLine = i;
+                    }
+                }
+                params.cursorPos = charOffset + bestPosInLine;
+            } else {
+                float mouseRelX = Input::getMouseX() - (params.rect.x + margin - params.scrollOffset);
+                int bestPos = 0;
+                float bestDist = 10000.0f;
+                for (int i = 0; i <= (int)params.value.length(); ++i) {
+                    std::string sub = params.value.substr(0, i);
+                    float2 subSize = getTextSize(font, sub, params.textSize);
+                    float dist = std::abs(subSize.x - mouseRelX);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPos = i;
+                    }
+                }
+                params.cursorPos = bestPos;
             }
+            if (params.cursorPos < params.protectedLen) params.cursorPos = params.protectedLen;
+            params.cursorVisible = true;
+            params.cursorTimer = 0.0f;
+            params.clearSelection();
+        } else if (focusedField == &params) {
+            focusedField = nullptr;
+            params.enabled = false;
+            SDL_StopTextInput(app.getWindow());
+            params.hasStartedTextInput = false;
         }
     }
 
-    if (params.enabled) {
+    // Support for manual enabled set
+    if (params.enabled && focusedField != &params) {
+        focusedField = &params;
+        if (!params.hasStartedTextInput) {
+            SDL_StartTextInput(app.getWindow());
+            params.hasStartedTextInput = true;
+        }
+    }
+
+    if (focusedField == &params) {
+        float margin = 5.0f;
+        float lineSpacing = 4.0f;
+        float lineHeight = (float)params.textSize + lineSpacing;
+
+        // Selection dragging
+        if (isMouseDown && isHovered && !isMousePressed) {
+            int targetPos = params.cursorPos;
+            if (params.multiLine) {
+                float mouseRelY = Input::getMouseY() - (params.rect.y + 4.0f - params.verticalScrollOffset);
+                int lineIdx = std::max(0, (int)std::floor(mouseRelY / lineHeight));
+                
+                std::vector<std::string> lines;
+                std::string line;
+                std::stringstream ss(params.value);
+                while (std::getline(ss, line, '\n')) lines.push_back(line);
+                if (!params.value.empty() && params.value.back() == '\n') lines.push_back("");
+                if (params.value.empty()) lines.push_back("");
+                
+                if (lineIdx >= (int)lines.size()) lineIdx = (int)lines.size() - 1;
+                
+                int charOffset = 0;
+                for (int i = 0; i < lineIdx; ++i) charOffset += (int)lines[i].length() + 1;
+                
+                float mouseRelX = Input::getMouseX() - (params.rect.x + margin);
+                int bestPosInLine = 0;
+                float bestDist = 10000.0f;
+                const std::string& currentLineText = lines[lineIdx];
+                for (int i = 0; i <= (int)currentLineText.length(); ++i) {
+                    std::string sub = currentLineText.substr(0, i);
+                    float2 subSize = getTextSize(font, sub, params.textSize);
+                    float dist = std::abs(subSize.x - mouseRelX);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPosInLine = i;
+                    }
+                }
+                targetPos = charOffset + bestPosInLine;
+            } else {
+                float mouseRelX = Input::getMouseX() - (params.rect.x + margin - params.scrollOffset);
+                int bestPos = 0;
+                float bestDist = 10000.0f;
+                for (int i = 0; i <= (int)params.value.length(); ++i) {
+                    std::string sub = params.value.substr(0, i);
+                    float2 subSize = getTextSize(font, sub, params.textSize);
+                    float dist = std::abs(subSize.x - mouseRelX);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestPos = i;
+                    }
+                }
+                targetPos = bestPos;
+            }
+            if (params.cursorPos != targetPos) {
+                if (params.selectionStart == -1) params.selectionStart = params.cursorPos;
+                params.cursorPos = targetPos;
+                if (params.cursorPos < params.protectedLen) params.cursorPos = params.protectedLen;
+            }
+        }
+
+        // Text Input
         const std::string& input = Input::getLastTextInput();
         if (!input.empty()) {
-            params.value += input;
+            if (params.hasSelection()) {
+                auto [start, end] = params.getSelectionRange();
+                params.value.erase(start, end - start);
+                params.cursorPos = start;
+                params.clearSelection();
+            }
+            
+            // Filter
+            std::string filteredInput;
+            for (char c : input) {
+                if (params.numericOnly && !std::isdigit(c) && c != '.' && c != '-') continue;
+                if (!params.allowedChars.empty() && params.allowedChars.find(c) == std::string::npos) continue;
+                filteredInput += c;
+            }
+
+            if (!filteredInput.empty()) {
+                params.value.insert(params.cursorPos, filteredInput);
+                params.cursorPos += (int)filteredInput.length();
+                params.cursorVisible = true;
+                params.cursorTimer = 0.0f;
+                params.clearSelection(); // Ensure selection is cleared after typing
+            }
             Input::clearTextInput();
         }
 
-        if (Input::isKeyPressed(Input::Key::BACKSPACE)) {
-            if (!params.value.empty()) {
-                params.value.pop_back();
+        bool ctrl = Input::isKeyDown(Input::Key::LCTRL) || Input::isKeyDown(Input::Key::RCTRL) || Input::isKeyDown(Input::Key::LGUI) || Input::isKeyDown(Input::Key::RGUI);
+        bool shift = Input::isKeyDown(Input::Key::LSHIFT) || Input::isKeyDown(Input::Key::RSHIFT);
+
+        auto handleKey = [&](Input::Key key, auto func) {
+            if (Input::isKeyPressed(key)) {
+                if (shift && params.selectionStart == -1) params.selectionStart = params.cursorPos;
+                else if (!shift && key != Input::Key::BACKSPACE && key != Input::Key::DELETE) params.clearSelection();
+                func();
+                params.cursorVisible = true;
+                params.cursorTimer = 0.0f;
+            }
+        };
+
+        // Clipboard
+        if (ctrl && Input::isKeyPressed(Input::Key::C)) {
+            if (params.hasSelection()) {
+                auto [start, end] = params.getSelectionRange();
+                SDL_SetClipboardText(params.value.substr(start, end - start).c_str());
             }
         }
-
-        if (Input::isKeyPressed(Input::Key::DELETE)) {
-            params.value.clear();
+        if (ctrl && Input::isKeyPressed(Input::Key::X)) {
+            if (params.hasSelection()) {
+                auto [start, end] = params.getSelectionRange();
+                SDL_SetClipboardText(params.value.substr(start, end - start).c_str());
+                params.value.erase(start, end - start);
+                params.cursorPos = start;
+                params.clearSelection();
+            }
+        }
+        if (ctrl && Input::isKeyPressed(Input::Key::V)) {
+            char* text = SDL_GetClipboardText();
+            if (text) {
+                if (params.hasSelection()) {
+                    auto [start, end] = params.getSelectionRange();
+                    params.value.erase(start, end - start);
+                    params.cursorPos = start;
+                    params.clearSelection();
+                }
+                std::string s(text);
+                params.value.insert(params.cursorPos, s);
+                params.cursorPos += (int)s.length();
+                SDL_free(text);
+            }
+        }
+        if (ctrl && Input::isKeyPressed(Input::Key::A)) {
+            params.selectionStart = 0;
+            params.cursorPos = (int)params.value.length();
         }
 
-        if (params.multiLine && Input::isKeyPressed(Input::Key::ENTER)) {
-            params.value += "\n";
+        // Navigation & Editing
+        handleKey(Input::Key::BACKSPACE, [&]() {
+            if (params.hasSelection()) {
+                auto [start, end] = params.getSelectionRange();
+                int finalStart = std::max(start, params.protectedLen);
+                if (finalStart < end) {
+                    params.value.erase(finalStart, end - finalStart);
+                    params.cursorPos = finalStart;
+                }
+                params.clearSelection();
+            } else if (params.cursorPos > params.protectedLen) {
+                if (ctrl) {
+                    int oldPos = params.cursorPos;
+                    // Jump to beginning of word, but not past protectedLen
+                    while (params.cursorPos > params.protectedLen && std::isspace(params.value[params.cursorPos-1])) params.cursorPos--;
+                    while (params.cursorPos > params.protectedLen && !std::isspace(params.value[params.cursorPos-1])) params.cursorPos--;
+                    params.value.erase(params.cursorPos, oldPos - params.cursorPos);
+                } else {
+                    params.value.erase(params.cursorPos - 1, 1);
+                    params.cursorPos--;
+                }
+            }
+        });
+
+        handleKey(Input::Key::DELETE, [&]() {
+            if (params.hasSelection()) {
+                auto [start, end] = params.getSelectionRange();
+                int finalStart = std::max(start, params.protectedLen);
+                if (finalStart < end) {
+                    params.value.erase(finalStart, end - finalStart);
+                    params.cursorPos = finalStart;
+                }
+                params.clearSelection();
+            } else if (params.cursorPos < (int)params.value.length() && params.cursorPos >= params.protectedLen) {
+                if (ctrl) {
+                    int start = params.cursorPos;
+                    while (params.cursorPos < (int)params.value.length() && std::isspace(params.value[params.cursorPos])) params.cursorPos++;
+                    while (params.cursorPos < (int)params.value.length() && !std::isspace(params.value[params.cursorPos])) params.cursorPos++;
+                    params.value.erase(start, params.cursorPos - start);
+                    params.cursorPos = start;
+                } else {
+                    params.value.erase(params.cursorPos, 1);
+                }
+            }
+        });
+
+        handleKey(Input::Key::LEFT, [&]() {
+            if (ctrl) {
+                while (params.cursorPos > params.protectedLen && std::isspace(params.value[params.cursorPos-1])) params.cursorPos--;
+                while (params.cursorPos > params.protectedLen && !std::isspace(params.value[params.cursorPos-1])) params.cursorPos--;
+            } else {
+                if (params.cursorPos > params.protectedLen) params.cursorPos--;
+            }
+        });
+
+        handleKey(Input::Key::RIGHT, [&]() {
+            if (ctrl) {
+                while (params.cursorPos < (int)params.value.length() && std::isspace(params.value[params.cursorPos])) params.cursorPos++;
+                while (params.cursorPos < (int)params.value.length() && !std::isspace(params.value[params.cursorPos])) params.cursorPos++;
+            } else {
+                if (params.cursorPos < (int)params.value.length()) params.cursorPos++;
+            }
+        });
+
+        handleKey(Input::Key::UP, [&]() {
+            if (params.multiLine) {
+                std::vector<std::string> lines;
+                std::string line;
+                std::stringstream ss(params.value);
+                while (std::getline(ss, line, '\n')) lines.push_back(line);
+                if (!params.value.empty() && params.value.back() == '\n') lines.push_back("");
+                if (params.value.empty()) lines.push_back("");
+
+                int currentLineIdx = 0;
+                int currentPosInLine = 0;
+                int charCount = 0;
+                for (int i = 0; i < (int)lines.size(); ++i) {
+                    if (params.cursorPos >= charCount && params.cursorPos <= charCount + (int)lines[i].length()) {
+                        currentLineIdx = i;
+                        currentPosInLine = params.cursorPos - charCount;
+                        break;
+                    }
+                    charCount += (int)lines[i].length() + 1;
+                }
+
+                if (currentLineIdx > 0) {
+                    float currentX = getTextSize(font, lines[currentLineIdx].substr(0, currentPosInLine), params.textSize).x;
+                    int prevLineIdx = currentLineIdx - 1;
+                    int prevLineCharOffset = 0;
+                    for (int i = 0; i < prevLineIdx; ++i) prevLineCharOffset += (int)lines[i].length() + 1;
+
+                    int bestPos = 0;
+                    float bestDist = 10000.0f;
+                    for (int i = 0; i <= (int)lines[prevLineIdx].length(); ++i) {
+                        float x = getTextSize(font, lines[prevLineIdx].substr(0, i), params.textSize).x;
+                        float dist = std::abs(x - currentX);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestPos = i;
+                        }
+                    }
+                    params.cursorPos = prevLineCharOffset + bestPos;
+                } else {
+                    params.cursorPos = 0;
+                }
+            }
+            if (params.cursorPos < params.protectedLen) params.cursorPos = params.protectedLen;
+        });
+
+        handleKey(Input::Key::DOWN, [&]() {
+            if (params.multiLine) {
+                std::vector<std::string> lines;
+                std::string line;
+                std::stringstream ss(params.value);
+                while (std::getline(ss, line, '\n')) lines.push_back(line);
+                if (!params.value.empty() && params.value.back() == '\n') lines.push_back("");
+                if (params.value.empty()) lines.push_back("");
+
+                int currentLineIdx = 0;
+                int currentPosInLine = 0;
+                int charCount = 0;
+                for (int i = 0; i < (int)lines.size(); ++i) {
+                    if (params.cursorPos >= charCount && params.cursorPos <= charCount + (int)lines[i].length()) {
+                        currentLineIdx = i;
+                        currentPosInLine = params.cursorPos - charCount;
+                        break;
+                    }
+                    charCount += (int)lines[i].length() + 1;
+                }
+
+                if (currentLineIdx < (int)lines.size() - 1) {
+                    float currentX = getTextSize(font, lines[currentLineIdx].substr(0, currentPosInLine), params.textSize).x;
+                    int nextLineIdx = currentLineIdx + 1;
+                    int nextLineCharOffset = 0;
+                    for (int i = 0; i < nextLineIdx; ++i) nextLineCharOffset += (int)lines[i].length() + 1;
+
+                    int bestPos = 0;
+                    float bestDist = 10000.0f;
+                    for (int i = 0; i <= (int)lines[nextLineIdx].length(); ++i) {
+                        float x = getTextSize(font, lines[nextLineIdx].substr(0, i), params.textSize).x;
+                        float dist = std::abs(x - currentX);
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestPos = i;
+                        }
+                    }
+                    params.cursorPos = nextLineCharOffset + bestPos;
+                } else {
+                    params.cursorPos = (int)params.value.length();
+                }
+            }
+        });
+
+        handleKey(Input::Key::HOME, [&]() { params.cursorPos = params.protectedLen; });
+        handleKey(Input::Key::END, [&]() { params.cursorPos = (int)params.value.length(); });
+
+        if (Input::isKeyPressed(Input::Key::ENTER)) {
+            if (params.onTextSubmit) {
+                std::string submitted = params.value.substr(params.protectedLen);
+                params.onTextSubmit(submitted);
+            } else if (params.multiLine) {
+                if (params.hasSelection()) {
+                    auto [start, end] = params.getSelectionRange();
+                    int finalStart = std::max(start, params.protectedLen);
+                    if (finalStart < end) {
+                        params.value.erase(finalStart, end - finalStart);
+                        params.cursorPos = finalStart;
+                    }
+                    params.clearSelection();
+                }
+                params.value.insert(params.cursorPos, "\n");
+                params.cursorPos++;
+                params.cursorVisible = true;
+                params.cursorTimer = 0.0f;
+            }
         }
     }
 
-    params.update(app.getDeltaTime());
+    params.update(dt);
 
     drawRoundedRect(params.rect, params.color, (float)params.roundRadius);
     drawRoundedRectOutline(params.rect, params.getEffectiveBorderColor(), (float)params.roundRadius, 1);
 
+    // Set clipping
+    SDL_Rect clipRect = { (int)params.rect.x, (int)params.rect.y, (int)params.rect.w, (int)params.rect.h };
+    SDL_SetRenderClipRect(app.getRenderer(), &clipRect);
+
+    float margin = 5.0f;
     std::string displayText = params.value;
     SDL_Color textColor = params.textColor;
-    if (displayText.empty() && !params.enabled) {
+    
+    if (displayText.empty() && focusedField != &params) {
         displayText = params.placeholder;
         textColor = params.placeholderColor;
     }
 
-    if (params.enabled) {
-        displayText += "|";
-    }
+    if (!params.multiLine) {
+        std::string textBeforeCursor = params.value.substr(0, params.cursorPos);
+        float2 sizeBefore = getTextSize(font, textBeforeCursor, params.textSize);
+        float visibleWidth = params.rect.w - margin * 2.0f;
+        
+        if (sizeBefore.x - params.scrollOffset > visibleWidth) {
+            params.scrollOffset = sizeBefore.x - visibleWidth;
+        }
+        if (sizeBefore.x - params.scrollOffset < 0) {
+            params.scrollOffset = sizeBefore.x;
+        }
+        
+        float2 textPos = { params.rect.x + margin - params.scrollOffset, params.rect.y + (params.rect.h - (float)params.textSize) / 2.0f };
+        
+        // Render selection
+        if (params.hasSelection()) {
+            auto [start, end] = params.getSelectionRange();
+            std::string subLeft = params.value.substr(0, start);
+            std::string subMid = params.value.substr(start, end - start);
+            float2 sizeLeft = getTextSize(font, subLeft, params.textSize);
+            float2 sizeMid = getTextSize(font, subMid, params.textSize);
+            
+            Rect selRect = { textPos.x + sizeLeft.x, textPos.y, sizeMid.x, (float)params.textSize };
+            drawRect(selRect, params.selectionColor);
+        }
 
-    if (params.multiLine) {
+        drawText(displayText, textPos, textColor, params.textSize);
+        
+        if (focusedField == &params && params.cursorVisible) {
+            float2 cursorStart = { textPos.x + sizeBefore.x, textPos.y };
+            float2 cursorEnd = { cursorStart.x, cursorStart.y + (float)params.textSize };
+            drawLine(cursorStart, cursorEnd, params.textColor, 1);
+        }
+    } else {
+        // Multi-line
         std::vector<std::string> lines;
         std::string line;
         std::stringstream ss(displayText);
         while (std::getline(ss, line, '\n')) {
             lines.push_back(line);
         }
-        if (!displayText.empty() && displayText.back() == '\n') {
-            lines.push_back("");
-        }
-        if (displayText.empty()) {
-            lines.push_back("");
-        }
+        if (!displayText.empty() && displayText.back() == '\n') lines.push_back("");
+        if (displayText.empty()) lines.push_back("");
 
-        float currentY = params.rect.y + 4;
-        for (const auto& l : lines) {
-            drawText(l, float2{ params.rect.x + 4, currentY }, textColor, params.textSize);
-            currentY += static_cast<float>(params.textSize) + 4.0f;
+        float lineSpacing = 4.0f;
+        float currentY = params.rect.y + 4.0f - params.verticalScrollOffset;
+        int charCount = 0;
+        auto [selStart, selEnd] = params.getSelectionRange();
+        
+        for (size_t i = 0; i < lines.size(); ++i) {
+            const auto& l = lines[i];
+            float2 linePos = { params.rect.x + margin, currentY };
+            int lineLen = (int)l.length();
+            int lineEndIdxTotal = charCount + lineLen;
+            
+            // Render selection for this line
+            if (params.hasSelection()) {
+                int drawStart = std::max(selStart, charCount);
+                int drawEnd = std::min(selEnd, lineEndIdxTotal);
+                
+                if (drawStart < drawEnd) {
+                    std::string subLeft = l.substr(0, drawStart - charCount);
+                    std::string subMid = l.substr(drawStart - charCount, drawEnd - drawStart);
+                    float2 sizeLeft = getTextSize(font, subLeft, params.textSize);
+                    float2 sizeMid = getTextSize(font, subMid, params.textSize);
+                    
+                    Rect selRect = { linePos.x + sizeLeft.x, linePos.y, sizeMid.x, (float)params.textSize };
+                    drawRect(selRect, params.selectionColor);
+                }
+                
+                // Selection of the newline itself
+                if (selEnd > lineEndIdxTotal && i < lines.size() - 1 && selStart <= lineEndIdxTotal) {
+                    float2 sizeWhole = getTextSize(font, l, params.textSize);
+                    Rect selRect = { linePos.x + sizeWhole.x, linePos.y, 10.0f, (float)params.textSize };
+                    drawRect(selRect, params.selectionColor);
+                }
+            }
+
+            if (params.lineRenderer) {
+                params.lineRenderer(*this, l, linePos, textColor, params.textSize);
+            } else {
+                drawText(l, linePos, textColor, params.textSize);
+            }
+            
+            if (focusedField == &params && params.cursorVisible) {
+                if (params.cursorPos >= charCount && params.cursorPos <= lineEndIdxTotal) {
+                    // Avoid drawing cursor twice if it's at the newline of a wrapped line (though we don't have wrap yet)
+                    // But here it's strictly \n based.
+                    std::string sub = l.substr(0, params.cursorPos - charCount);
+                    float2 subSize = getTextSize(font, sub, params.textSize);
+                    float2 cursorStart = { linePos.x + subSize.x, currentY };
+                    float2 cursorEnd = { cursorStart.x, cursorStart.y + (float)params.textSize };
+                    drawLine(cursorStart, cursorEnd, params.textColor, 1);
+                    
+                    // Auto-scroll vertical
+                    if (currentY < params.rect.y) params.verticalScrollOffset -= (params.rect.y - currentY);
+                    if (currentY + params.textSize > params.rect.y + params.rect.h) params.verticalScrollOffset += (currentY + params.textSize - (params.rect.y + params.rect.h));
+                }
+            }
+            charCount += lineLen + 1; // +1 for newline
+            currentY += static_cast<float>(params.textSize) + lineSpacing;
         }
-    } else {
-        drawText(displayText, float2{ params.rect.x + 4, params.rect.y + 4 }, textColor, params.textSize);
     }
-    return params;
+
+    SDL_SetRenderClipRect(app.getRenderer(), nullptr);
+    return;
 }
 
-InputField& Renderer::drawInputField(InputField& params, LayoutManager& layout, float w, float h) {
+void Renderer::drawInputField(InputField& params, LayoutManager& layout, float w, float h) {
     params.rect = layout.next(w, h);
     return drawInputField(params);
 }
 
-InputField& Renderer::drawInputField(InputField& params, float w, float h) {
-    if (activeLayout) params.rect = activeLayout->next(w, h);
+void Renderer::drawInputField(InputField& params, float w, float h) {
+    params.rect = getNextRect(w, h);
     return drawInputField(params);
+}
+
+void Renderer::drawColorPicker(ColorPicker& params) {
+    float2 mousePos = Input::getMousePos();
+    bool isLMBDown = Input::isMouseButtonDown(SDL_BUTTON_LEFT);
+    bool isLMBPressed = Input::isMouseButtonPressed(SDL_BUTTON_LEFT);
+
+    // Layout
+    float padding = 5.0f;
+    float hueSliderWidth = 20.0f;
+    Rect svRect = { params.rect.x, params.rect.y, params.rect.w - hueSliderWidth - padding, params.rect.h };
+    Rect hueRect = { params.rect.x + params.rect.w - hueSliderWidth, params.rect.y, hueSliderWidth, params.rect.h };
+
+    // Interaction
+    if (params.enabled) {
+        if (isLMBPressed) {
+            if (Input::isMouseHoveringRect(mousePos, svRect)) params.isDraggingSV = true;
+            if (Input::isMouseHoveringRect(mousePos, hueRect)) params.isDraggingHue = true;
+        }
+
+        if (!isLMBDown) {
+            params.isDraggingSV = false;
+            params.isDraggingHue = false;
+        }
+
+        if (params.isDraggingSV) {
+            params.saturation = std::clamp((mousePos.x - svRect.x) / svRect.w, 0.0f, 1.0f);
+            params.value = std::clamp(1.0f - (mousePos.y - svRect.y) / svRect.h, 0.0f, 1.0f);
+            params.updateColorFromHSV();
+        }
+
+        if (params.isDraggingHue) {
+            params.hue = std::clamp((mousePos.y - hueRect.y) / hueRect.h, 0.0f, 1.0f) * 360.0f;
+            if (params.hue >= 360.0f) params.hue = 359.9f;
+            params.updateColorFromHSV();
+        }
+    }
+
+    // Drawing SV Square (simplified with triangles or a small texture if we had one, but let's use a procedural approach or just draw some lines)
+    // Actually, drawing a full SV square procedurally every frame without a shader or texture is slow.
+    // Let's draw it using 4 points and SDL_RenderGeometry?
+    
+    // Hue color for the top-right corner of SV square
+    ColorPicker temp = params;
+    temp.saturation = 1.0f; temp.value = 1.0f;
+    temp.updateColorFromHSV();
+    SDL_Color hueColor = temp.color;
+
+    SDL_Vertex verts[4];
+    // TL: White
+    verts[0] = { { svRect.x, svRect.y }, { 1.0f, 1.0f, 1.0f, 1.0f }, { 0, 0 } };
+    // TR: Hue Color
+    verts[1] = { { svRect.x + svRect.w, svRect.y }, { hueColor.r / 255.0f, hueColor.g / 255.0f, hueColor.b / 255.0f, 1.0f }, { 0, 0 } };
+    // BL: Black
+    verts[2] = { { svRect.x, svRect.y + svRect.h }, { 0.0f, 0.0f, 0.0f, 1.0f }, { 0, 0 } };
+    // BR: Black
+    verts[3] = { { svRect.x + svRect.w, svRect.y + svRect.h }, { 0.0f, 0.0f, 0.0f, 1.0f }, { 0, 0 } };
+
+    int indices[] = { 0, 1, 2, 1, 3, 2 };
+    SDL_RenderGeometry(app.getRenderer(), nullptr, verts, 4, indices, 6);
+
+    // Draw SV cursor
+    float cursorX = svRect.x + params.saturation * svRect.w;
+    float cursorY = svRect.y + (1.0f - params.value) * svRect.h;
+    drawCircleOutline({ {cursorX, cursorY}, 5.0f }, (params.value > 0.5f ? Color::Black : Color::White), 2);
+
+    // Draw Hue Slider
+    for (int i = 0; i < (int)hueRect.h; ++i) {
+        float h = (float)i / hueRect.h * 360.0f;
+        ColorPicker hp; hp.hue = h; hp.saturation = 1.0f; hp.value = 1.0f;
+        hp.updateColorFromHSV();
+        drawLine({hueRect.x, hueRect.y + i}, {hueRect.x + hueRect.w, hueRect.y + i}, hp.color, 1);
+    }
+    
+    // Draw Hue cursor
+    float hueY = hueRect.y + (params.hue / 360.0f) * hueRect.h;
+    drawRectOutline({ hueRect.x - 2, hueY - 2, hueRect.w + 4, 4 }, Color::White, 2);
+
+    drawRectOutline(params.rect, Color::Border, 1);
+}
+
+void Renderer::drawColorPicker(ColorPicker& params, LayoutManager& layout, float w, float h) {
+    params.rect = layout.next(w, h);
+    drawColorPicker(params);
+}
+
+void Renderer::drawColorPicker(ColorPicker& params, float w, float h) {
+    params.rect = getNextRect(w, h);
+    drawColorPicker(params);
 }
 
 void Renderer::drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thickness, float startValue, float endValue, int segments, const std::string& label, int segmentLineHeight, bool drawSegmentLabel, int textSize) {
@@ -609,8 +1299,7 @@ void Renderer::drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thi
 void Renderer::drawImage(const RawImage& image, float w, float h) {
     float finalW = (w > 0) ? w : static_cast<float>(image.w);
     float finalH = (h > 0) ? h : static_cast<float>(image.h);
-    Rect r = { 0, 0, finalW, finalH };
-    if (activeLayout) r = activeLayout->next(finalW, finalH);
+    Rect r = getNextRect(finalW, finalH);
     drawImage(image, r);
 }
 
@@ -630,6 +1319,8 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
 
         SDL_Texture* sdlTex = SDL_CreateTexture(app.getRenderer(), SDL_PIXELFORMAT_RGBA32, access, image.w, image.h);
         if (!sdlTex) return;
+
+        SDL_SetTextureScaleMode(sdlTex, SDL_SCALEMODE_PIXELART);
 
         pt.texture = Texture{ sdlTex, image.w, image.h };
         SDL_SetTextureBlendMode(pt.texture.handle, SDL_BLENDMODE_BLEND);
@@ -718,14 +1409,53 @@ void Renderer::drawImage(const RawImage& image, Rect dst) {
     }
 }
 
+void Renderer::drawImageRotated(const RawImage& image, Rect dst, float angle, float2 center) {
+    if (image.w <= 0 || image.h <= 0) return;
+
+    // Use same signature logic to find the texture
+    uint64_t signature = (static_cast<uint64_t>(image.w) << 32) | image.h;
+    signature ^= static_cast<uint64_t>(image.scale * 1000.0f);
+    if (image.type == NoiseType::NONE) {
+        signature ^= reinterpret_cast<uintptr_t>(image.data.data());
+    }
+
+    auto it = progressiveTextures.find(signature);
+    if (it == progressiveTextures.end()) {
+        // If not found, call drawImage once to initialize it
+        drawImage(image, dst);
+        it = progressiveTextures.find(signature);
+        if (it == progressiveTextures.end()) return;
+    }
+
+    auto& pt = it->second;
+    if (pt.texture.isValid()) {
+        SDL_FRect dstFRect = { dst.x, dst.y, dst.w, dst.h };
+        SDL_FPoint sdlCenter = { center.x, center.y };
+        SDL_RenderTextureRotated(app.getRenderer(), pt.texture.handle, nullptr, &dstFRect, angle, (center.x < 0) ? nullptr : &sdlCenter, SDL_FLIP_NONE);
+    }
+}
+
 void Renderer::drawImage(const RawImage& image, float2 pos, float scale) {
     drawImage(image, Rect{ pos.x, pos.y, static_cast<float>(image.w) * scale, static_cast<float>(image.h) * scale });
 }
 
 void Renderer::drawSprite(const Sprite& sprite, float scale) {
     if (!sprite.getTexture()) return;
-    SDL_FRect dst = { sprite.pos.x, sprite.pos.y, sprite.width * scale, sprite.height * scale };
-    SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &dst);
+    Rect r = { sprite.pos.x, sprite.pos.y, sprite.width * scale, sprite.height * scale };
+    if (activeLayout) r = activeLayout->next(r.w, r.h);
+    drawSprite(sprite, r);
+}
+
+void Renderer::drawSprite(const Sprite& sprite, float w, float h) {
+    if (!sprite.getTexture()) return;
+    Rect r = getNextRect(w, h);
+    drawSprite(sprite, r);
+}
+
+void Renderer::drawSprite(const Sprite& sprite, Rect dst) {
+    if (!sprite.getTexture()) return;
+    SDL_FRect d = { dst.x, dst.y, dst.w, dst.h };
+    SDL_RenderTexture(app.getRenderer(), sprite.getTexture(), nullptr, &d);
 }
 
 void Renderer::drawNineSlice(const NineSlice& ns, Rect dst) {
@@ -813,56 +1543,56 @@ void Renderer::drawParticles(ParticleEmitter& particleEmitter) {
     }
 }
 
-void Renderer::applyBloom(float intensity) {
-    if (!sceneTexture || !bloomTexture1 || !bloomTexture2 || intensity <= 0.0f) return;
-
-    // Pass 1: Bright Pass / Extraction
-    // We want to isolate only the brightest parts of the scene.
-    // Since we don't have shaders, we can use SDL_BLENDMODE_MOD with a threshold color.
-    // Anything below the threshold will become much darker.
-    SDL_SetRenderTarget(app.getRenderer(), bloomTexture1);
-    SDL_SetRenderDrawColor(app.getRenderer(), 0, 0, 0, 255);
-    SDL_RenderClear(app.getRenderer());
-
-    // Draw the scene into bloomTexture1
-    SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_NONE);
-    SDL_RenderTexture(app.getRenderer(), sceneTexture, nullptr, nullptr);
-
-    // Multiplicative blend with a "threshold" color (dark) to suppress low-intensity pixels
-    // Using a dark gray means only very bright pixels survive with significant intensity
-    SDL_SetRenderDrawColor(app.getRenderer(), 40, 40, 40, 255); // Threshold factor
-    SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_MOD);
-    SDL_FRect fullRect = { 0, 0, (float)bloomW, (float)bloomH };
-    SDL_RenderFillRect(app.getRenderer(), &fullRect);
-    SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_NONE); // Reset blend mode
-    SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_BLEND); // Ensure sceneTexture isn't stuck in NONE
-
-    // Pass 2: Blur iterations
-    // We'll use bloomTexture2 as temporary buffer
-    // More iterations and varying offsets for a smoother, larger bloom
-    blurTexture(bloomTexture1, bloomTexture2, 5);
-
-    // Final Pass: Additive blend back to scene
-    SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
-    SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_ADD);
-    
-    // We can layer it multiple times for extra "oomph"
-    float alpha = std::clamp(intensity, 0.0f, 1.0f);
-    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 255));
-    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
-    
-    // Layer 2: slightly larger and softer
-    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 180));
-    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
-
-    // Layer 3: smaller, more intense core
-    SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 128));
-    SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
-    
-    // Restore state
-    SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_NONE); // Reset texture blend mode
-    SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
-}
+// void Renderer::applyBloom(float intensity) {
+//     if (!sceneTexture || !bloomTexture1 || !bloomTexture2 || intensity <= 0.0f) return;
+//
+//     // Pass 1: Bright Pass / Extraction
+//     // We want to isolate only the brightest parts of the scene.
+//     // Since we don't have shaders, we can use SDL_BLENDMODE_MOD with a threshold color.
+//     // Anything below the threshold will become much darker.
+//     SDL_SetRenderTarget(app.getRenderer(), bloomTexture1);
+//     SDL_SetRenderDrawColor(app.getRenderer(), 0, 0, 0, 255);
+//     SDL_RenderClear(app.getRenderer());
+//
+//     // Draw the scene into bloomTexture1
+//     SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_NONE);
+//     SDL_RenderTexture(app.getRenderer(), sceneTexture, nullptr, nullptr);
+//
+//     // Multiplicative blend with a "threshold" color (dark) to suppress low-intensity pixels
+//     // Using a dark gray means only very bright pixels survive with significant intensity
+//     SDL_SetRenderDrawColor(app.getRenderer(), 40, 40, 40, 255); // Threshold factor
+//     SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_MOD);
+//     SDL_FRect fullRect = { 0, 0, (float)bloomW, (float)bloomH };
+//     SDL_RenderFillRect(app.getRenderer(), &fullRect);
+//     SDL_SetRenderDrawBlendMode(app.getRenderer(), SDL_BLENDMODE_NONE); // Reset blend mode
+//     SDL_SetTextureBlendMode(sceneTexture, SDL_BLENDMODE_BLEND); // Ensure sceneTexture isn't stuck in NONE
+//
+//     // Pass 2: Blur iterations
+//     // We'll use bloomTexture2 as temporary buffer
+//     // More iterations and varying offsets for a smoother, larger bloom
+//     blurTexture(bloomTexture1, bloomTexture2, 5);
+//
+//     // Final Pass: Additive blend back to scene
+//     SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
+//     SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_ADD);
+//
+//     // We can layer it multiple times for extra "oomph"
+//     float alpha = std::clamp(intensity, 0.0f, 1.0f);
+//     SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 255));
+//     SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+//
+//     // Layer 2: slightly larger and softer
+//     SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 180));
+//     SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+//
+//     // Layer 3: smaller, more intense core
+//     SDL_SetTextureAlphaMod(bloomTexture1, (Uint8)(alpha * 128));
+//     SDL_RenderTexture(app.getRenderer(), bloomTexture1, nullptr, nullptr);
+//
+//     // Restore state
+//     SDL_SetTextureBlendMode(bloomTexture1, SDL_BLENDMODE_NONE); // Reset texture blend mode
+//     SDL_SetRenderTarget(app.getRenderer(), sceneTexture);
+// }
 
 void Renderer::ensureBloomTextures() {
     int w = app.getWidth();
@@ -950,4 +1680,19 @@ void Renderer::applyScreenShake(float dt) {
 void Renderer::resetScreenShake() {
     SDL_Rect defaultViewport = { 0, 0, app.getWidth(), app.getHeight() };
     SDL_SetRenderViewport(app.getRenderer(), &defaultViewport);
+}
+
+
+void Renderer::drawPanel(UI_Panel& panel) {
+    if (app.isAutoResizeEnabled()) {
+        if (panel.area.w == (float)app.getInitialWidth()) panel.area.w = (float)app.getWidth();
+        if (panel.area.h == (float)app.getInitialHeight()) panel.area.h = (float)app.getHeight();
+        if (panel.area.x == (float)app.getInitialWidth()) panel.area.x = (float)app.getWidth();
+        if (panel.area.y == (float)app.getInitialHeight()) panel.area.y = (float)app.getHeight();
+    }
+    panel.resetLayout();
+    drawRect(panel.area, panel.bgColor);
+    if (!panel.outlineProperties.enabled) return;
+
+    drawRectOutline(panel.area, panel.outlineProperties.color, panel.outlineProperties.width);
 }

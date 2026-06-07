@@ -4,7 +4,7 @@
 
 #include <Audio.hpp>
 
-Audio::Audio(Application& application, const std::string& filePath) : filePath(filePath), app(application) {
+Audio::Audio(Application& application, const std::string& filePath) : app(application), filePath(filePath) {
     audio = MIX_LoadAudio(app.getMixer(), filePath.c_str(), true);
     if (!audio) {
         app.triggerError("Couldn't load audio file");

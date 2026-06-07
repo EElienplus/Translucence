@@ -5,6 +5,9 @@
 #include "Application.hpp"
 #include "EventSystem.hpp"
 #include "Sprite.hpp"
+#include "LayoutManager.hpp"
+#include "Input.hpp"
+#include <algorithm>
 
 Application::~Application() {
     if (font) {
@@ -50,6 +53,7 @@ void Application::create(int argWidth, int argHeight, std::string argTitle) {
     renderer = SDL_CreateRenderer(window, nullptr);
     if (renderer) {
         SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderVSync(renderer, 1);
     }
 
     textEngine = TTF_CreateRendererTextEngine(renderer);
@@ -66,10 +70,18 @@ void Application::create(int argWidth, int argHeight, std::string argTitle) {
         }
     }
 
-    width = argWidth;
-    height = argHeight;
+    if (window) {
+        SDL_GetWindowSize(window, &width, &height);
+    } else {
+        width = argWidth;
+        height = argHeight;
+    }
+    initialWidth = width;
+    initialHeight = height;
     title = argTitle;
     running = true;
+
+    Input::setApplication(this);
 
     std::string iconPath = TRANSLUCENCE_RESOURCE_DIR "icon.png";
     setTitleIcon(iconPath);
@@ -152,6 +164,14 @@ int Application::getHeight() const {
     return height;
 }
 
+int Application::getInitialWidth() const {
+    return initialWidth;
+}
+
+int Application::getInitialHeight() const {
+    return initialHeight;
+}
+
 int Application::getFontSize() {
     return baseFontSize;
 }
@@ -170,6 +190,13 @@ void Application::setRunning(bool argIsRunning) {
 
 void Application::setResizable(bool argValue) {
     SDL_SetWindowResizable(window, argValue);
+}
+
+bool Application::isResizable() const {
+    if (window) {
+        return (SDL_GetWindowFlags(window) & SDL_WINDOW_RESIZABLE) != 0;
+    }
+    return (windowFlags & SDL_WINDOW_RESIZABLE) != 0;
 }
 
 std::string Application::getFontPath() {
@@ -200,21 +227,18 @@ void Application::triggerError(const std::string& errorMsg) {
 
 void Application::updateDeltaTime() {
     uint64_t currentTime = SDL_GetTicksNS();
-    if (lastTime == 0) lastTime = currentTime;
+    if (lastTime == 0) {
+        lastTime = currentTime - 16666666; // Assume ~60fps for first frame
+    }
     uint64_t deltaNS = currentTime - lastTime;
     lastTime = currentTime;
 
     float newDelta = static_cast<float>(deltaNS) / 1000000000.0f;
 
-    // Simple Exponential Moving Average for smoothing
-    // 0.8 current, 0.2 previous
-    if (deltaTime == 0.0f) {
-        deltaTime = newDelta;
-    }
-    else {
-        // More moderate smoothing to respond faster to frame drops
-        deltaTime = deltaTime * 0.5f + newDelta * 0.5f;
-    }
+    // Cap delta time to 0.1s to prevent huge jumps after stalls
+    if (newDelta > 0.1f) newDelta = 0.1f;
+    
+    deltaTime = newDelta;
 
     // Accurate FPS counter (updates once per second)
     fpsCount++;
@@ -245,6 +269,31 @@ void Application::setTitleIcon(std::string filePath) {
 
 void Application::setFontPath(std::string argFontPath) {
     fontPath = argFontPath;
+}
+
+void Application::setAutoResizeEnabled(bool enabled) {
+    autoResizeEnabled = enabled;
+}
+
+bool Application::isAutoResizeEnabled() const {
+    return autoResizeEnabled;
+}
+
+void Application::registerLayoutManager(LayoutManager* lm) {
+    if (std::find(registeredLayouts.begin(), registeredLayouts.end(), lm) == registeredLayouts.end()) {
+        registeredLayouts.push_back(lm);
+    }
+}
+
+void Application::unregisterLayoutManager(LayoutManager* lm) {
+    auto it = std::find(registeredLayouts.begin(), registeredLayouts.end(), lm);
+    if (it != registeredLayouts.end()) {
+        registeredLayouts.erase(it);
+    }
+}
+
+const std::vector<LayoutManager*>& Application::getLayoutManagers() const {
+    return registeredLayouts;
 }
 
 void Application::setWindowFlags(SDL_WindowFlags argWindowFlags) {

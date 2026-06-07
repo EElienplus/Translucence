@@ -3,6 +3,7 @@
 //
 
 #include "Input.hpp"
+#include "Application.hpp"
 
 // static storage
 std::unordered_map<SDL_Scancode, bool> Input::currentKeys;
@@ -12,6 +13,7 @@ std::unordered_map<uint8_t, bool> Input::currentButtons;
 std::unordered_map<uint8_t, bool> Input::pressedButtons;
 std::unordered_map<uint8_t, bool> Input::releasedButtons;
 std::string Input::lastTextInput;
+Application* Input::appInstance = nullptr;
 int Input::mouseX = 0;
 int Input::mouseY = 0;
 float Input::wheelY = 0.0f;
@@ -151,4 +153,29 @@ int Input::getMouseY() { return mouseY; }
 float Input::getMouseWheelY() { return wheelY; }
 
 const std::string &Input::getLastTextInput() { return lastTextInput; }
+
+void Input::setApplication(Application* app) {
+    appInstance = app;
+}
+
+bool Input::isMouseHoveringRect(float2 mousePos, Rect rect) {
+    Rect scaledRect = rect;
+    if (appInstance && appInstance->isAutoResizeEnabled()) {
+        int iw = appInstance->getInitialWidth();
+        int ih = appInstance->getInitialHeight();
+        if (iw > 0 && ih > 0) {
+            int cw = appInstance->getWidth();
+            int ch = appInstance->getHeight();
+            if (static_cast<int>(rect.w) == iw) scaledRect.w = static_cast<float>(cw);
+            if (static_cast<int>(rect.h) == ih) scaledRect.h = static_cast<float>(ch);
+            if (static_cast<int>(rect.x) == iw) scaledRect.x = static_cast<float>(cw);
+            if (static_cast<int>(rect.y) == ih) scaledRect.y = static_cast<float>(ch);
+        }
+    }
+
+    return (mousePos.x >= scaledRect.x &&
+            mousePos.x <= scaledRect.x + scaledRect.w &&
+            mousePos.y >= scaledRect.y &&
+            mousePos.y <= scaledRect.y + scaledRect.h);
+}
 

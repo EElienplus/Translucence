@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include "ParticleEmitter.hpp"
+#include "UiPanel.hpp"
 
 class Renderer {
 public:
@@ -33,9 +34,11 @@ public:
     void drawBezier(float2 startPos, float2 endPos, std::vector<float2> controlPoints, SDL_Color color, int thickness);
 
     void drawText(std::string text, float2 pos, SDL_Color color, int textSize);
+    void drawText(std::string text, SDL_Color color, int textSize, float w = -1, float h = -1);
     void drawList(const std::vector<std::string>& list, float2 pos, SDL_Color color, int textSize);
 
     void useLayout(class LayoutManager* lm);
+    Rect getNextRect(float w, float h);
     void row(float h = -1, float padding = 0, float spacing = -1);
     void column(float w = -1, float padding = 0, float spacing = -1);
     void end();
@@ -44,21 +47,28 @@ public:
     void drawGrid(Rect area, int tilesX, int tilesY, SDL_Color colora, SDL_Color colorb);
     void drawGridLines(Rect area, int tilesX, int tilesY, SDL_Color color, int lineWidth);
 
-    Button& drawButton(Button& params);
-    Button& drawButton(Button& params, class LayoutManager& layout, float w = -1, float h = -1);
-    Button& drawButton(Button& params, float w, float h);
-    Slider& drawSlider(Slider& params);
-    Slider& drawSlider(Slider& params, class LayoutManager& layout, float w = -1, float h = -1);
-    Slider& drawSlider(Slider& params, float w, float h);
-    InputField& drawInputField(InputField& params);
-    InputField& drawInputField(InputField& params, class LayoutManager& layout, float w = -1, float h = -1);
-    InputField& drawInputField(InputField& params, float w, float h);
+    void drawButton(Button& params);
+    void drawButton(Button& params, class LayoutManager& layout, float w = -1, float h = -1);
+    void drawButton(Button& params, float w, float h);
+    void drawSlider(Slider& params);
+    void drawSlider(Slider& params, class LayoutManager& layout, float w = -1, float h = -1);
+    void drawSlider(Slider& params, float w, float h);
+    void drawInputField(InputField& params);
+    void drawInputField(InputField& params, class LayoutManager& layout, float w = -1, float h = -1);
+    void drawInputField(InputField& params, float w, float h);
+
+    void drawColorPicker(ColorPicker& params);
+    void drawColorPicker(ColorPicker& params, class LayoutManager& layout, float w = -1, float h = -1);
+    void drawColorPicker(ColorPicker& params, float w, float h);
 
     void drawAxis(float2 startPos, float2 endPos, SDL_Color color, int thickness, float startValue, float endValue, int segments, const std::string& label = "", int segmentLineHeight = 10, bool drawSegmentLabel = true, int textSize = 15);
     void drawImage(const RawImage& image, float2 pos, float scale = 1.0f);
     void drawImage(const RawImage& image, float w = -1, float h = -1);
     void drawImage(const RawImage& image, Rect dst);
+    void drawImageRotated(const RawImage& image, Rect dst, float angle, float2 center = {-1, -1});
     void drawSprite(const Sprite& sprite, float scale = 1);
+    void drawSprite(const Sprite& sprite, float w, float h);
+    void drawSprite(const Sprite& sprite, Rect dst);
     void drawNineSlice(const NineSlice& ns, Rect dst);
     void updateImage(const RawImage& image);
 
@@ -67,7 +77,10 @@ public:
     // High-level public configuration method
     void screenShake(float durationInSeconds, float intensity, float frequency);
 
-    void applyBloom(float intensity);
+    // void applyBloom(float intensity); // it was just testing, it's very bad
+    void drawPanel(UI_Panel& panel);
+
+    Application& getApp() const { return app; }
 
 private:
     void ensureBloomTextures();
@@ -84,6 +97,7 @@ private:
 
     Application& app;
     class LayoutManager* activeLayout;
+    void* focusedField = nullptr; // Track which InputField has focus
     std::unordered_map<uint64_t, ProgressiveTexture> progressiveTextures;
 
     float shakeTimer = 0.0f;

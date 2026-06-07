@@ -1,14 +1,13 @@
 // EventSystem.cpp
 #include "EventSystem.hpp"
-
 #include "Input.hpp"
+#include "LayoutManager.hpp"
 
 EventSystem::EventSystem(Application& application) : application(application) {
 }
 
 void EventSystem::runEvents() {
 	Input::beginFrame();
-    application.update();
 
 	while (SDL_PollEvent(&event)) {
 

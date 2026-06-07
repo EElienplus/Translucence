@@ -1,196 +1,209 @@
-#include "MTF.hpp"
+#include "Mtf.hpp"
 #include <fstream>
 #include <iostream>
+#include <sstream>
+#include <algorithm>
 
 namespace Translucence {
 
-StringId StringPool::intern(std::string_view text) {
-    if (text.empty()) return InvalidStringId;
+std::shared_ptr<MTFNode> MTFNode::find(std::string_view path, bool create) {
+    if (path.empty()) return nullptr;
 
-    auto it = lookup.find(text);
-    if (it != lookup.end()) {
-        return it->second;
+    size_t slash = path.find('/');
+    std::string_view first = path;
+    std::string_view rest = "";
+
+    if (slash != std::string_view::npos) {
+        first = path.substr(0, slash);
+        rest = path.substr(slash + 1);
     }
-    
-    buffer.emplace_back(text);
-    StringId newId = static_cast<StringId>(buffer.size() - 1);
-    
-    // Update lookup with a stable string_view pointing to the newly stored string
-    lookup[std::string_view(buffer.back())] = newId;
-    return newId;
+
+    std::string nameStr(first);
+    if (!children.count(nameStr)) {
+        if (create) {
+            children[nameStr] = std::make_shared<MTFNode>(nameStr);
+        } else {
+            return nullptr;
+        }
+    }
+
+    if (rest.empty()) {
+        return children[nameStr];
+    } else {
+        return children[nameStr]->find(rest, create);
+    }
 }
 
-const std::string& StringPool::resolve(StringId id) const {
-    static const std::string empty = "";
-    if (id == InvalidStringId || id >= buffer.size()) return empty;
-    return buffer[id];
+MTF::MTF() {
+    rootNode = std::make_shared<MTFNode>("root");
 }
 
-std::string_view MTFDatabase::trim(std::string_view str) {
-    size_t first = str.find_first_not_of(" \t\r\n");
+void MTF::clear() {
+    rootNode = std::make_shared<MTFNode>("root");
+}
+
+std::string_view MTF::trim(std::string_view s) {
+    size_t first = s.find_first_not_of(" \t\r\n");
     if (first == std::string_view::npos) return "";
-    size_t last = str.find_last_not_of(" \t\r\n");
-    return str.substr(first, (last - first + 1));
+    size_t last = s.find_last_not_of(" \t\r\n");
+    return s.substr(first, (last - first + 1));
 }
 
-std::vector<std::string_view> MTFDatabase::tokenizeArray(std::string_view content) {
-    std::vector<std::string_view> tokens;
+std::vector<std::string> MTF::tokenizeArray(std::string_view content) {
+    std::vector<std::string> tokens;
     size_t start = 0;
     size_t end = content.find(',');
     
     while (end != std::string_view::npos) {
-        tokens.push_back(trim(content.substr(start, end - start)));
+        tokens.emplace_back(trim(content.substr(start, end - start)));
         start = end + 1;
         end = content.find(',', start);
     }
-    tokens.push_back(trim(content.substr(start)));
+    tokens.emplace_back(trim(content.substr(start)));
     return tokens;
 }
 
-bool MTFDatabase::loadFromFile(const std::string& filepath) {
+bool MTF::load(const std::string& filepath) {
     std::ifstream file(filepath);
-    if (!file.is_open()) {
-        std::cerr << "[MTF] Failed to open: " << filepath << "\n";
-        return false;
-    }
+    if (!file.is_open()) return false;
 
+    clear();
     std::string line;
-    MTFCategory* currentCat = nullptr;
+    std::shared_ptr<MTFNode> currentSection = rootNode;
 
     while (std::getline(file, line)) {
         std::string_view view = trim(line);
-        if (view.empty()) continue;
+        if (view.empty() || view.front() == '#') continue;
 
-        // 1. Detect Category Block
+        // 1. Section: [Path/To/Section]
         if (view.front() == '[' && view.back() == ']') {
-            std::string_view catName = trim(view.substr(1, view.length() - 2));
-            StringId catId = stringPool.intern(catName);
-            categories[catId] = MTFCategory();
-            currentCat = &categories[catId];
-            currentCat->nameId = catId;
+            std::string_view path = trim(view.substr(1, view.length() - 2));
+            currentSection = section(std::string(path), true);
             continue;
         }
 
-        if (!currentCat) continue; // Skip orphan data
-
+        // 2. List Item: - item
         if (view.front() == '-') {
-            std::string_view item = trim(view.substr(1));
-            currentCat->listEntries.push_back(stringPool.intern(item));
+            currentSection->add(std::string(trim(view.substr(1))));
             continue;
         }
 
-        size_t arrowPos = view.find("->");
-        if (arrowPos == std::string_view::npos) continue;
+        // 3. Key-Value: key -> value
+        size_t arrow = view.find("->");
+        if (arrow != std::string_view::npos) {
+            std::string_view key = trim(view.substr(0, arrow));
+            std::string_view val = trim(view.substr(arrow + 2));
 
-        std::string_view keyStr = trim(view.substr(0, arrowPos));
-        std::string_view valStr = trim(view.substr(arrowPos + 2));
-
-        if (keyStr == "@note") {
-            if (valStr.front() == '"' && valStr.back() == '"') {
-                valStr = valStr.substr(1, valStr.length() - 2);
-            }
-            currentCat->notes.push_back(stringPool.intern(valStr));
-            continue;
-        }
-
-        if (keyStr == "@schema") {
-            if (valStr.front() == '[' && valStr.back() == ']') {
-                std::string_view content = valStr.substr(1, valStr.length() - 2);
-                auto tokens = tokenizeArray(content);
-                for (auto token : tokens) {
-                    currentCat->schema.push_back(stringPool.intern(token));
+            // Metadata: @schema
+            if (key == "@schema" || (val.front() == '[' && val.back() == ']')) {
+                std::string_view content = val;
+                if (val.front() == '[' && val.back() == ']') {
+                    content = val.substr(1, val.length() - 2);
                 }
+                currentSection->setGrid(std::string(key), tokenizeArray(content));
+            } else {
+                // Strip quotes if present
+                if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
+                    val = val.substr(1, val.length() - 2);
+                }
+                currentSection->set(std::string(key), std::string(val));
             }
             continue;
         }
-
-        if (valStr.front() == '[' && valStr.back() == ']') {
-            std::string_view content = valStr.substr(1, valStr.length() - 2);
-            auto tokens = tokenizeArray(content);
-            
-            StringId rowKeyId = stringPool.intern(keyStr);
-            std::vector<StringId>& rowData = currentCat->gridEntries[rowKeyId];
-            
-            for (auto token : tokens) {
-                rowData.push_back(stringPool.intern(token));
-            }
-            continue;
-        }
-
-        // 6. Fallback to 2D Dict
-        currentCat->dictEntries[stringPool.intern(keyStr)] = stringPool.intern(valStr);
     }
 
     return true;
 }
 
-bool MTFDatabase::hasCategory(const std::string& categoryName) {
-    StringId catId = stringPool.intern(categoryName);
-    return categories.find(catId) != categories.end();
-}
+bool MTF::loadFromString(const std::string& content) {
+    std::stringstream ss(content);
+    clear();
+    std::string line;
+    std::shared_ptr<MTFNode> currentSection = rootNode;
 
-std::vector<std::string> MTFDatabase::getNotes(const std::string& categoryName) {
-    std::vector<std::string> result;
-    StringId catId = stringPool.intern(categoryName);
-    if (categories.find(catId) == categories.end()) return result;
-    
-    for (StringId noteId : categories[catId].notes) {
-        result.push_back(stringPool.resolve(noteId));
-    }
-    return result;
-}
+    while (std::getline(ss, line)) {
+        std::string_view view = trim(line);
+        if (view.empty() || view.front() == '#') continue;
 
-std::vector<std::string> MTFDatabase::getList(const std::string& categoryName) {
-    std::vector<std::string> result;
-    StringId catId = stringPool.intern(categoryName);
-    if (categories.find(catId) == categories.end()) return result;
-    
-    for (StringId itemId : categories[catId].listEntries) {
-        result.push_back(stringPool.resolve(itemId));
-    }
-    return result;
-}
+        if (view.front() == '[' && view.back() == ']') {
+            std::string_view path = trim(view.substr(1, view.length() - 2));
+            currentSection = section(std::string(path), true);
+            continue;
+        }
 
-std::string MTFDatabase::getDictValue(const std::string& categoryName, const std::string& key) {
-    StringId catId = stringPool.intern(categoryName);
-    StringId keyId = stringPool.intern(key);
-    
-    if (categories.find(catId) != categories.end()) {
-        auto& dict = categories[catId].dictEntries;
-        if (dict.find(keyId) != dict.end()) {
-            return stringPool.resolve(dict[keyId]);
+        if (view.front() == '-') {
+            currentSection->add(std::string(trim(view.substr(1))));
+            continue;
+        }
+
+        size_t arrow = view.find("->");
+        if (arrow != std::string_view::npos) {
+            std::string_view key = trim(view.substr(0, arrow));
+            std::string_view val = trim(view.substr(arrow + 2));
+
+            if (key == "@schema" || (val.front() == '[' && val.back() == ']')) {
+                std::string_view arrContent = val;
+                if (val.front() == '[' && val.back() == ']') {
+                    arrContent = val.substr(1, val.length() - 2);
+                }
+                currentSection->setGrid(std::string(key), tokenizeArray(arrContent));
+            } else {
+                if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
+                    val = val.substr(1, val.length() - 2);
+                }
+                currentSection->set(std::string(key), std::string(val));
+            }
+            continue;
         }
     }
-    return "";
+    return true;
 }
 
-std::string MTFDatabase::getGridValue(const std::string& categoryName, const std::string& rowKey, const std::string& schemaKey) {
-    StringId catId = stringPool.intern(categoryName);
-    StringId rowId = stringPool.intern(rowKey);
-    StringId schemaId = stringPool.intern(schemaKey);
-
-    if (categories.find(catId) == categories.end()) return "";
-    
-    MTFCategory& cat = categories[catId];
-    if (cat.gridEntries.find(rowId) == cat.gridEntries.end()) return "";
-
-    // Find which column index the requested schema key belongs to
-    int targetColIndex = -1;
-    for (size_t i = 0; i < cat.schema.size(); ++i) {
-        if (cat.schema[i] == schemaId) {
-            targetColIndex = static_cast<int>(i);
-            break;
+static void saveNodeRecursive(std::ostream& os, std::shared_ptr<MTFNode> node, const std::string& fullPath) {
+    if (!node->empty() && node->name != "root") {
+        os << "[" << fullPath << "]\n";
+        
+        // Properties
+        for (const auto& [key, val] : node->properties) {
+            os << key << " -> \"" << val << "\"\n";
         }
+        
+        // Grids
+        for (const auto& [key, vals] : node->grids) {
+            os << key << " -> [";
+            for (size_t i = 0; i < vals.size(); ++i) {
+                os << vals[i] << (i < vals.size() - 1 ? ", " : "");
+            }
+            os << "]\n";
+        }
+        
+        // List
+        for (const auto& item : node->list) {
+            os << "- " << item << "\n";
+        }
+        
+        os << "\n";
     }
 
-    if (targetColIndex == -1) return ""; // Schema column doesn't exist
-
-    std::vector<StringId>& rowData = cat.gridEntries[rowId];
-    if (targetColIndex < rowData.size()) {
-        return stringPool.resolve(rowData[targetColIndex]);
+    // Children
+    for (const auto& [name, child] : node->children) {
+        std::string nextPath = fullPath.empty() ? name : fullPath + "/" + name;
+        saveNodeRecursive(os, child, nextPath);
     }
+}
 
-    return "";
+bool MTF::save(const std::string& filepath) {
+    std::ofstream file(filepath);
+    if (!file.is_open()) return false;
+
+    saveNodeRecursive(file, rootNode, "");
+    return true;
+}
+
+std::string MTF::saveToString() {
+    std::stringstream ss;
+    saveNodeRecursive(ss, rootNode, "");
+    return ss.str();
 }
 
 } // namespace Translucence

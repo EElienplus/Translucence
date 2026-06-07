@@ -1,2 +1,2 @@
-add_executable(example_BouncingBall BouncingBall.cpp)
-target_link_libraries(example_BouncingBall PRIVATE translucence)
+add_executable(example_DrawingApp DrawingApp.cpp)
+target_link_libraries(example_DrawingApp PRIVATE translucence)

@@ -30,13 +30,13 @@ public:
     float2 getCenterPos();
     float2 getFeetPos();
 
-    void update(float scale = 1.0f, float dt = 0.0f);
+    void update(float argScale = 1.0f, float dt = 0.0f);
     void updatePhysics(float dt);
-    void assignCollider(float scale = 1.0f);
+    void assignCollider(float argScale = 1.0f);
 
     void applyGravity(float strength, float dt);
-    void resolveCollision(const Collider& other, float scale = 1.0f, bool horizontalOnly = false);
-    void wadMovement(float speed, float jumpStrength, float dt);
+    void resolveCollision(const Collider& other, float argScale = 1.0f, bool horizontalOnly = false);
+    void wadMovement(float speed, float jumpStrength, float dt, float acceleration = 2000.0f, float friction = 1000.0f);
 
     void updateDragDrop();
 
