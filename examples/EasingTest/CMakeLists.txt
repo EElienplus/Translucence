@@ -1,0 +1,2 @@
+add_executable(example_EasingTest EasingTest.cpp)
+target_link_libraries(example_EasingTest PRIVATE translucence)
